@@ -138,6 +138,10 @@ env.bak/
 venv.bak/
 
 logs/*
+data/token.json
+data/setting.toml
+.claude/
+.serena/
 
 # Spyder project settings
 .spyderproject
