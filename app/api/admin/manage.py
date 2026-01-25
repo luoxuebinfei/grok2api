@@ -91,6 +91,15 @@ class TestTokenRequest(BaseModel):
     token_type: str
 
 
+class BatchTestTokensRequest(BaseModel):
+    """批量测试Token请求"""
+    mode: str = "selected"  # selected: 测试选中, all: 测试全部, filter: 按条件筛选
+    tokens: Optional[List[Dict[str, str]]] = None  # mode=selected 时使用
+    token_type: Optional[str] = None  # mode=filter 时筛选类型
+    status: Optional[str] = None  # mode=filter 时筛选状态
+    concurrency: int = 3  # 并发数
+
+
 # === 辅助函数 ===
 
 def validate_token_type(token_type_str: str) -> TokenType:
@@ -620,3 +629,132 @@ async def test_token(request: TestTokenRequest, _: bool = Depends(verify_admin_s
     except Exception as e:
         logger.error(f"[Admin] Token测试异常: {e}")
         raise HTTPException(status_code=500, detail={"error": f"测试失败: {e}", "code": "TEST_TOKEN_ERROR"})
+
+
+@router.post("/api/tokens/test/batch")
+async def batch_test_tokens(request: BatchTestTokensRequest, _: bool = Depends(verify_admin_session)) -> Dict[str, Any]:
+    """批量测试Token可用性"""
+    import asyncio
+    
+    try:
+        # 根据模式获取待测试的 token 列表
+        tokens_to_test: List[Dict[str, str]] = []
+        
+        if request.mode == "selected":
+            if not request.tokens:
+                raise HTTPException(status_code=400, detail={"error": "未选择任何Token", "code": "NO_TOKENS"})
+            tokens_to_test = request.tokens
+            
+        elif request.mode == "all":
+            all_tokens = token_manager.get_tokens()
+            # 存储键到前端键的映射
+            type_mapping = {TokenType.NORMAL.value: "sso", TokenType.SUPER.value: "ssoSuper"}
+            for storage_type, api_type in type_mapping.items():
+                for token in all_tokens.get(storage_type, {}).keys():
+                    tokens_to_test.append({"token": token, "token_type": api_type})
+
+        elif request.mode == "filter":
+            all_tokens = token_manager.get_tokens()
+            # 存储键到前端键的映射
+            type_mapping = {TokenType.NORMAL.value: "sso", TokenType.SUPER.value: "ssoSuper"}
+            for storage_type, api_type in type_mapping.items():
+                if request.token_type and request.token_type != api_type:
+                    continue
+                for token, data in all_tokens.get(storage_type, {}).items():
+                    if request.status:
+                        token_status = get_token_status(data)
+                        if token_status != request.status:
+                            continue
+                    tokens_to_test.append({"token": token, "token_type": api_type})
+        else:
+            raise HTTPException(status_code=400, detail={"error": "无效的测试模式", "code": "INVALID_MODE"})
+        
+        if not tokens_to_test:
+            return {"success": True, "data": {"total": 0, "valid": 0, "invalid": 0, "results": []}}
+        
+        logger.info(f"[Admin] 开始批量测试 {len(tokens_to_test)} 个Token，并发数: {request.concurrency}")
+        
+        # 并发控制
+        semaphore = asyncio.Semaphore(request.concurrency)
+        results = []
+        
+        async def test_single_token(token_info: Dict[str, str]) -> Dict[str, Any]:
+            async with semaphore:
+                token = token_info["token"]
+                token_type = token_info["token_type"]
+                token_short = token[:10] + "..."
+                
+                try:
+                    auth_token = f"sso-rw={token};sso={token}"
+                    result = await token_manager.check_limits(auth_token, "grok-4-fast")
+                    
+                    if result:
+                        return {
+                            "token": token_short,
+                            "token_type": token_type,
+                            "valid": True,
+                            "remaining": result.get("remainingTokens", -1),
+                            "message": "Token有效"
+                        }
+                    else:
+                        # 获取详细错误信息
+                        all_tokens = token_manager.get_tokens()
+                        token_data = all_tokens.get(token_type, {}).get(token)
+                        
+                        error_type = "unknown"
+                        message = "Token无效"
+                        
+                        if token_data:
+                            if token_data.get("status") == "expired":
+                                error_type = "expired"
+                                message = "Token已失效"
+                            elif token_data.get("remainingQueries") == 0:
+                                error_type = "limited"
+                                message = "Token已被限流"
+                            else:
+                                error_type = "blocked"
+                                message = "服务器被block或网络错误"
+                        
+                        return {
+                            "token": token_short,
+                            "token_type": token_type,
+                            "valid": False,
+                            "error_type": error_type,
+                            "message": message
+                        }
+                        
+                except Exception as e:
+                    logger.error(f"[Admin] 测试Token异常 {token_short}: {e}")
+                    return {
+                        "token": token_short,
+                        "token_type": token_type,
+                        "valid": False,
+                        "error_type": "error",
+                        "message": f"测试异常: {str(e)[:50]}"
+                    }
+        
+        # 并发执行所有测试
+        tasks = [test_single_token(t) for t in tokens_to_test]
+        results = await asyncio.gather(*tasks)
+        
+        # 统计结果
+        valid_count = sum(1 for r in results if r["valid"])
+        invalid_count = len(results) - valid_count
+        
+        logger.info(f"[Admin] 批量测试完成: 总计 {len(results)}, 有效 {valid_count}, 无效 {invalid_count}")
+        
+        return {
+            "success": True,
+            "data": {
+                "total": len(results),
+                "valid": valid_count,
+                "invalid": invalid_count,
+                "results": results
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Admin] 批量测试异常: {e}")
+        raise HTTPException(status_code=500, detail={"error": f"批量测试失败: {e}", "code": "BATCH_TEST_ERROR"})

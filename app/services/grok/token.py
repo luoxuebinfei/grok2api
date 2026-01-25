@@ -314,8 +314,11 @@ class GrokTokenManager:
         try:
             rate_model = Models.to_rate_limit(model)
             payload = {"requestKind": "DEFAULT", "modelName": rate_model}
-            
+
             cf = setting.grok_config.get("cf_clearance", "")
+            # 确保 cf_clearance 格式正确
+            if cf and not cf.startswith("cf_clearance="):
+                cf = f"cf_clearance={cf}"
             headers = get_dynamic_headers("/rest/rate-limits")
             headers["Cookie"] = f"{auth_token};{cf}" if cf else auth_token
 
@@ -331,16 +334,16 @@ class GrokTokenManager:
                 while retry_403_count <= max_403_retries:
                     # 异步获取代理（支持代理池）
                     from app.core.proxy_pool import proxy_pool
-                    
+
                     # 如果是403重试且使用代理池，强制刷新代理
                     if retry_403_count > 0 and proxy_pool._enabled:
                         logger.info(f"[Token] 403重试 {retry_403_count}/{max_403_retries}，刷新代理...")
                         proxy = await proxy_pool.force_refresh()
                     else:
                         proxy = await setting.get_proxy_async("service")
-                    
+
                     proxies = {"http": proxy, "https": proxy} if proxy else None
-                    
+
                     async with AsyncSession() as session:
                         response = await session.post(
                             RATE_LIMIT_API,

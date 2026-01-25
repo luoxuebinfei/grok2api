@@ -369,6 +369,26 @@
                 <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
               </svg>
             </button>
+            <!-- 批量测试下拉菜单 -->
+            <div class="relative" id="batchTestDropdown">
+              <button onclick="toggleBatchTestMenu()" class="btn-icon" title="批量测试">
+                <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                  <polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
+              </button>
+              <div id="batchTestMenu" class="hidden absolute right-0 top-full mt-1 w-40 rounded-md border border-border bg-background shadow-lg z-50">
+                <div class="py-1">
+                  <button onclick="batchTestTokens('selected')" class="w-full px-3 py-2 text-left text-sm hover:bg-accent">测试选中</button>
+                  <button onclick="batchTestTokens('all')" class="w-full px-3 py-2 text-left text-sm hover:bg-accent">测试全部</button>
+                  <div class="border-t border-border my-1"></div>
+                  <button onclick="batchTestTokens('filter', null, '未使用')" class="w-full px-3 py-2 text-left text-sm hover:bg-accent">测试未使用</button>
+                  <button onclick="batchTestTokens('filter', null, '正常')" class="w-full px-3 py-2 text-left text-sm hover:bg-accent">测试正常</button>
+                  <button onclick="batchTestTokens('filter', null, '限流中')" class="w-full px-3 py-2 text-left text-sm hover:bg-accent">测试限流中</button>
+                </div>
+              </div>
+            </div>
             <div id="batchActions" class="hidden items-center gap-2">
               <button onclick="exportSelected()" class="btn-icon" title="导出选中项">
                 <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -842,7 +862,7 @@
       loadTokens = async () => { try { const r = await apiRequest('/api/tokens'); if (!r) return; const d = await r.json(); d.success && (allTokens = d.data.map(t => ({ ...t, tags: t.tags || [], note: t.note || '' })), filteredTokens = allTokens, selectedTokens.clear(), renderTokens(), updateRemaining(), await loadAllTags()) } catch (e) { console.error('加载列表失败:', e) } },
       updateRemaining = () => { const r = calcRemaining(); const chatTotal = r.total; const imageTotal = Math.floor(chatTotal / 2); $('statChatRemaining').textContent = chatTotal === 0 ? '-' : chatTotal.toLocaleString(); $('statImageRemaining').textContent = imageTotal === 0 ? '-' : imageTotal.toLocaleString(); $('statVideoRemaining').textContent = '无法统计' }
 
-    const renderTokens = () => { const tb = $('tokenTableBody'), es = $('emptyState'), ss = { '未使用': 'bg-muted text-muted-foreground', '限流中': 'bg-orange-50 text-orange-700 border-orange-200', '失效': 'bg-destructive/10 text-destructive border-destructive/20', '正常': 'bg-green-50 text-green-700 border-green-200' }, ts = { sso: 'bg-blue-50 text-blue-700 border-blue-200', ssoSuper: 'bg-purple-50 text-purple-700 border-purple-200' }, tl = { sso: 'SSO', ssoSuper: 'SuperSSO' }; if (!filteredTokens.length) { tb.innerHTML = ''; es.classList.remove('hidden'); $('selectAll').checked = false; return updateBatchActions() } es.classList.add('hidden'); tb.innerHTML = filteredTokens.map(t => { const tagsHtml = t.tags && t.tags.length ? t.tags.map(tag => `<span class="inline-flex items-center rounded px-1.5 py-0.5 text-xs bg-gray-100 text-gray-700">${tag}</span>`).join(' ') : '<span class="text-xs text-muted-foreground">-</span>'; const noteHtml = t.note && t.note.length ? `<span class="text-xs text-gray-700" title="${t.note}">${t.note.length > 20 ? t.note.substring(0, 20) + '...' : t.note}</span>` : '<span class="text-xs text-muted-foreground">-</span>'; return `<tr class="transition-colors"><td class="py-2.5 px-3 align-middle w-12"><input type="checkbox" class="token-checkbox h-3.5 w-3.5 rounded border border-input focus:ring-1 focus:ring-ring" data-token="${t.token}" data-type="${t.token_type}" ${selectedTokens.has(t.token) ? 'checked' : ''} onchange="toggleToken('${t.token}')"></td><td class="py-2.5 px-3 align-middle w-80"><div class="flex items-center gap-2"><span class="font-mono text-xs">${t.token.substring(0, 30)}...</span><button onclick="copyToken('${t.token.replace(/'/g, "\\'")}',event)" class="inline-flex items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring hover:bg-accent h-6 w-6" title="复制完整 Token"><svg class="h-3 w-3 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div></td><td class="py-2.5 px-3 align-middle w-20"><span class="inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium border ${ts[t.token_type]}">${tl[t.token_type]}</span></td><td class="py-2.5 px-3 align-middle w-20"><span class="inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium border ${ss[t.status]}">${t.status}</span></td><td class="py-2.5 px-3 align-middle w-20 text-xs tabular-nums">${t.remaining_queries === -1 ? '-' : t.remaining_queries}</td><td class="py-2.5 px-3 align-middle w-20 text-xs tabular-nums">${t.heavy_remaining_queries === -1 ? '-' : t.heavy_remaining_queries}</td><td class="py-2.5 px-3 align-middle w-32"><div class="flex flex-wrap gap-1">${tagsHtml}</div></td><td class="py-2.5 px-3 align-middle w-40">${noteHtml}</td><td class="py-2.5 px-3 align-middle w-32 text-xs text-muted-foreground">${t.created_time ? new Date(t.created_time).toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' }) : '-'}</td><td class="py-2.5 px-3 align-middle text-right w-28 sticky-right"><div class="flex items-center justify-end gap-1"><button onclick="testToken('${t.token}','${t.token_type}')" class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring hover:bg-blue-50 hover:text-blue-700 h-7 w-7" title="测试Token"><svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></button><button onclick="editToken('${t.token}','${t.token_type}')" class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring hover:bg-accent hover:text-accent-foreground h-7 w-7" title="编辑信息"><svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button><button onclick="deleteToken('${t.token}','${t.token_type}')" class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring hover:bg-destructive/10 hover:text-destructive h-7 w-7" title="删除"><svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></div></td></tr>` }).join(''); updateBatchActions() },
+    const renderTokens = () => { const tb = $('tokenTableBody'), es = $('emptyState'), ss = { '未使用': 'bg-muted text-muted-foreground', '限流中': 'bg-orange-50 text-orange-700 border-orange-200', '失效': 'bg-destructive/10 text-destructive border-destructive/20', '正常': 'bg-green-50 text-green-700 border-green-200' }, ts = { sso: 'bg-blue-50 text-blue-700 border-blue-200', ssoSuper: 'bg-purple-50 text-purple-700 border-purple-200' }, tl = { sso: 'SSO', ssoSuper: 'SuperSSO' }; if (!filteredTokens.length) { tb.innerHTML = ''; es.classList.remove('hidden'); $('selectAll').checked = false; return updateBatchActions() } es.classList.add('hidden'); tb.innerHTML = filteredTokens.map(t => { const tagsHtml = t.tags && t.tags.length ? t.tags.map(tag => `<span class="inline-flex items-center rounded px-1.5 py-0.5 text-xs bg-gray-100 text-gray-700">${tag}</span>`).join(' ') : '<span class="text-xs text-muted-foreground">-</span>'; const noteHtml = t.note && t.note.length ? `<span class="text-xs text-gray-700" title="${t.note}">${t.note.length > 20 ? t.note.substring(0, 20) + '...' : t.note}</span>` : '<span class="text-xs text-muted-foreground">-</span>'; const escapedToken = t.token.replace(/"/g, '&quot;'); return `<tr class="transition-colors"><td class="py-2.5 px-3 align-middle w-12"><input type="checkbox" class="token-checkbox h-3.5 w-3.5 rounded border border-input focus:ring-1 focus:ring-ring" data-token="${escapedToken}" data-type="${t.token_type}" ${selectedTokens.has(t.token) ? 'checked' : ''} onchange="toggleToken('${t.token}')"></td><td class="py-2.5 px-3 align-middle w-80"><div class="flex items-center gap-2"><span class="font-mono text-xs">${t.token.substring(0, 30)}...</span><button onclick="copyToken(event)" data-token="${escapedToken}" class="inline-flex items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring hover:bg-accent h-6 w-6" title="复制完整 Token"><svg class="h-3 w-3 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div></td><td class="py-2.5 px-3 align-middle w-20"><span class="inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium border ${ts[t.token_type]}">${tl[t.token_type]}</span></td><td class="py-2.5 px-3 align-middle w-20"><span class="inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium border ${ss[t.status]}">${t.status}</span></td><td class="py-2.5 px-3 align-middle w-20 text-xs tabular-nums">${t.remaining_queries === -1 ? '-' : t.remaining_queries}</td><td class="py-2.5 px-3 align-middle w-20 text-xs tabular-nums">${t.heavy_remaining_queries === -1 ? '-' : t.heavy_remaining_queries}</td><td class="py-2.5 px-3 align-middle w-32"><div class="flex flex-wrap gap-1">${tagsHtml}</div></td><td class="py-2.5 px-3 align-middle w-40">${noteHtml}</td><td class="py-2.5 px-3 align-middle w-32 text-xs text-muted-foreground">${t.created_time ? new Date(t.created_time).toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' }) : '-'}</td><td class="py-2.5 px-3 align-middle text-right w-28 sticky-right"><div class="flex items-center justify-end gap-1"><button onclick="testToken('${t.token}','${t.token_type}')" class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring hover:bg-blue-50 hover:text-blue-700 h-7 w-7" title="测试Token"><svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></button><button onclick="editToken('${t.token}','${t.token_type}')" class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring hover:bg-accent hover:text-accent-foreground h-7 w-7" title="编辑信息"><svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button><button onclick="deleteToken('${t.token}','${t.token_type}')" class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring hover:bg-destructive/10 hover:text-destructive h-7 w-7" title="删除"><svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></div></td></tr>` }).join(''); updateBatchActions() },
       toggleToken = t => selectedTokens[selectedTokens.has(t) ? 'delete' : 'add'](t) || updateBatchActions(),
       toggleSelectAll = () => { const sa = $('selectAll'); sa.checked ? filteredTokens.forEach(t => selectedTokens.add(t.token)) : selectedTokens.clear(); renderTokens() },
       updateBatchActions = () => { const ba = $('batchActions'), sc = $('selectedCount'), c = selectedTokens.size; ba.classList[c > 0 ? 'add' : 'remove']('flex'); ba.classList[c > 0 ? 'remove' : 'add']('hidden'); c > 0 && (sc.textContent = `已选择 ${c} 项`); $('selectAll').checked = filteredTokens.length > 0 && c === filteredTokens.length },
@@ -854,7 +874,30 @@
       deleteToken = async (t, tt) => { if (!confirm('确定要删除这个 Token 吗?')) return; try { const r = await apiRequest('/api/tokens/delete', { method: 'POST', body: JSON.stringify({ tokens: [t], token_type: tt }) }); if (!r) return; const d = await r.json(); d.success ? await refreshTokens() : showToast('删除失败: ' + (d.error || '未知错误'), 'error') } catch (e) { showToast('删除失败: ' + e.message, 'error') } },
       batchDelete = async () => { if (!selectedTokens.size || !confirm(`确定要删除选中的 ${selectedTokens.size} 个 Token 吗?此操作不可恢复!`)) return; const tbt = { sso: [], ssoSuper: [] }; document.querySelectorAll('.token-checkbox:checked').forEach(cb => tbt[cb.dataset.type].push(cb.dataset.token)); try { const ps = [];['sso', 'ssoSuper'].forEach(k => tbt[k].length && ps.push(apiRequest('/api/tokens/delete', { method: 'POST', body: JSON.stringify({ tokens: tbt[k], token_type: k }) }))); await Promise.all(ps); await refreshTokens() } catch (e) { showToast('批量删除失败: ' + e.message, 'error') } },
       submitAddTokens = async () => { const tt = $('addTokenType').value, tks = $('addTokenList').value.split('\n').map(t => t.trim()).filter(t => t); if (!tks.length) return showToast('请输入至少一个 Token', 'error'); try { const r = await apiRequest('/api/tokens/add', { method: 'POST', body: JSON.stringify({ tokens: tks, token_type: tt }) }); if (!r) return; const d = await r.json(); d.success ? (closeAddModal(), await refreshTokens()) : showToast('添加失败: ' + (d.error || '未知错误'), 'error') } catch (e) { showToast('添加失败: ' + e.message, 'error') } },
-      copyToken = async (t, e) => { e.stopPropagation(); try { await navigator.clipboard.writeText(t); showToast('Token 已复制到剪贴板', 'success') } catch (err) { console.error('复制失败:', err); showToast('复制失败,请手动复制', 'error') } }
+      copyToken = async (e) => {
+        e.stopPropagation();
+        const token = e.currentTarget.dataset.token;
+        try {
+          await navigator.clipboard.writeText(token);
+          showToast('Token 已复制到剪贴板', 'success')
+        } catch (err) {
+          // 降级方案：使用 textarea
+          const textarea = document.createElement('textarea');
+          textarea.value = token;
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          document.body.appendChild(textarea);
+          textarea.select();
+          try {
+            document.execCommand('copy');
+            showToast('Token 已复制到剪贴板', 'success');
+          } catch (e2) {
+            console.error('复制失败:', e2);
+            showToast('复制失败,请手动复制', 'error');
+          }
+          document.body.removeChild(textarea);
+        }
+      }
 
     let currentEditToken = '', currentEditTokenType = '';
     editToken = (token, tokenType) => { currentEditToken = token; currentEditTokenType = tokenType; const tokenData = allTokens.find(t => t.token === token); const currentTags = tokenData?.tags || []; const currentNote = tokenData?.note || ''; $('editTokenInput').value = token.substring(0, 50) + '...'; $('editTagsInput').value = currentTags.join(', '); $('editNoteInput').value = currentNote; const suggestedContainer = $('suggestedTags'); suggestedContainer.innerHTML = ''; if (allTagsList.length > 0) { suggestedContainer.innerHTML = '<div class="text-xs text-muted-foreground mb-1">常用标签:</div>' + allTagsList.map(tag => `<button onclick="addTagToInput('${tag}')" class="inline-flex items-center rounded px-2 py-1 text-xs bg-muted hover:bg-accent transition-colors">${tag}</button>`).join('') } $('editTagsModal').classList.remove('hidden') },
@@ -863,6 +906,119 @@
       submitEditInfo = async () => { if (!currentEditToken) return; const tagsInput = $('editTagsInput').value; const note = $('editNoteInput').value.trim(); const tags = tagsInput.split(',').map(t => t.trim()).filter(t => t); const promises = []; promises.push(apiRequest('/api/tokens/tags', { method: 'POST', body: JSON.stringify({ token: currentEditToken, token_type: currentEditTokenType, tags }) })); promises.push(apiRequest('/api/tokens/note', { method: 'POST', body: JSON.stringify({ token: currentEditToken, token_type: currentEditTokenType, note }) })); try { const results = await Promise.all(promises); const allSuccess = results.every(r => r && r.ok); if (allSuccess) { closeEditModal(); await refreshTokens(); showToast('信息更新成功', 'success') } else { showToast('部分更新失败，请重试', 'error') } } catch (e) { showToast('更新失败: ' + e.message, 'error') } }
 
     testToken = async (token, tokenType) => { const btn = event.target.closest('button'); const originalHtml = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<svg class="h-3.5 w-3.5 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>'; try { const r = await apiRequest('/api/tokens/test', { method: 'POST', body: JSON.stringify({ token, token_type: tokenType }) }); if (!r) return; const d = await r.json(); if (d.success && d.data.valid) { showToast(`Token有效！剩余: ${d.data.remaining_queries === -1 ? '无限制' : d.data.remaining_queries}次`, 'success'); await refreshTokens() } else { const errMsgs = { expired: 'Token已失效 (401错误)', blocked: '服务器被block，请稍后再试或更换IP', limited: 'Token已被限流' }; showToast(errMsgs[d.data?.error_type] || 'Token无效或已失效', 'error') } } catch (e) { showToast('测试失败: ' + e.message, 'error') } finally { btn.disabled = false; btn.innerHTML = originalHtml } }
+
+    // 批量测试相关函数
+    toggleBatchTestMenu = () => { const menu = $('batchTestMenu'); menu.classList.toggle('hidden') }
+    document.addEventListener('click', (e) => { const dropdown = $('batchTestDropdown'); if (dropdown && !dropdown.contains(e.target)) { $('batchTestMenu').classList.add('hidden') } })
+
+    // 进度条相关
+    let progressEl = null;
+    const showProgress = (current, total, message) => {
+      if (!progressEl) {
+        progressEl = document.createElement('div');
+        progressEl.className = 'fixed bottom-4 right-4 bg-background border border-border rounded-lg shadow-lg p-4 z-50 min-w-[280px]';
+        progressEl.innerHTML = `
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-sm font-medium" id="progressTitle">批量测试中...</span>
+            <span class="text-xs text-muted-foreground" id="progressCount">0/0</span>
+          </div>
+          <div class="w-full bg-muted rounded-full h-2 mb-2">
+            <div id="progressBar" class="bg-primary h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+          </div>
+          <div class="text-xs text-muted-foreground" id="progressMessage">准备中...</div>
+        `;
+        document.body.appendChild(progressEl);
+      }
+      const percent = total > 0 ? Math.round((current / total) * 100) : 0;
+      document.getElementById('progressCount').textContent = `${current}/${total}`;
+      document.getElementById('progressBar').style.width = `${percent}%`;
+      document.getElementById('progressMessage').textContent = message;
+    };
+    const hideProgress = () => {
+      if (progressEl) {
+        progressEl.style.opacity = '0';
+        progressEl.style.transition = 'opacity .3s';
+        setTimeout(() => { if (progressEl && progressEl.parentNode) { document.body.removeChild(progressEl); progressEl = null; } }, 300);
+      }
+    };
+
+    batchTestTokens = async (mode, tokenType = null, status = null) => {
+      $('batchTestMenu').classList.add('hidden');
+
+      let requestBody = { mode, concurrency: 3 };
+      let confirmMsg = '';
+      let totalCount = 0;
+
+      if (mode === 'selected') {
+        if (!selectedTokens.size) return showToast('请先选择要测试的 Token', 'error');
+        const tokens = [];
+        document.querySelectorAll('.token-checkbox:checked').forEach(cb => {
+          tokens.push({ token: cb.dataset.token, token_type: cb.dataset.type });
+        });
+        requestBody.tokens = tokens;
+        totalCount = tokens.length;
+        confirmMsg = `确定要测试选中的 ${tokens.length} 个 Token 吗？`;
+      } else if (mode === 'all') {
+        totalCount = allTokens.length;
+        confirmMsg = `确定要测试所有 ${allTokens.length} 个 Token 吗？`;
+      } else if (mode === 'filter') {
+        requestBody.token_type = tokenType;
+        requestBody.status = status;
+        totalCount = allTokens.filter(t => (!tokenType || t.token_type === tokenType) && (!status || t.status === status)).length;
+        confirmMsg = `确定要测试 ${status ? '"' + status + '"状态的' : ''}${totalCount} 个 Token 吗？`;
+      }
+
+      if (!confirm(confirmMsg)) return;
+
+      // 显示进度条
+      showProgress(0, totalCount, '正在连接服务器...');
+
+      // 模拟进度更新（因为后端是批量返回的）
+      let fakeProgress = 0;
+      const progressInterval = setInterval(() => {
+        if (fakeProgress < totalCount - 1) {
+          fakeProgress += Math.ceil(totalCount / 20); // 大约 20 步完成
+          if (fakeProgress > totalCount - 1) fakeProgress = totalCount - 1;
+          showProgress(fakeProgress, totalCount, `正在测试 Token...`);
+        }
+      }, 200);
+
+      try {
+        const r = await apiRequest('/api/tokens/test/batch', { method: 'POST', body: JSON.stringify(requestBody) });
+        clearInterval(progressInterval);
+
+        if (!r) {
+          hideProgress();
+          return;
+        }
+        const d = await r.json();
+
+        if (d.success) {
+          const { total, valid, invalid } = d.data;
+          showProgress(total, total, `完成！有效: ${valid}, 无效: ${invalid}`);
+
+          setTimeout(() => {
+            hideProgress();
+            showToast(`测试完成！总计: ${total}, 有效: ${valid}, 无效: ${invalid}`, valid === total ? 'success' : 'info');
+          }, 1000);
+
+          await refreshTokens();
+
+          if (invalid > 0) {
+            const invalidResults = d.data.results.filter(r => !r.valid);
+            console.log('无效Token详情:', invalidResults);
+          }
+        } else {
+          hideProgress();
+          showToast('批量测试失败: ' + (d.detail?.error || '未知错误'), 'error');
+        }
+      } catch (e) {
+        clearInterval(progressInterval);
+        hideProgress();
+        showToast('批量测试失败: ' + e.message, 'error');
+      }
+    }
+
 
     const exportSelected = () => { if (!selectedTokens.size) return showToast('请先选择要导出的 Token', 'error'); const sd = allTokens.filter(t => selectedTokens.has(t.token)), csv = [['Token', '类型', '状态', '普通调用剩余', '高级调用剩余', '创建时间'].join(','), ...sd.map(t => [`"${t.token}"`, t.token_type === 'sso' ? 'SSO' : 'SuperSSO', t.status, t.remaining_queries === -1 ? '未使用' : t.remaining_queries, t.heavy_remaining_queries === -1 ? '未使用' : t.heavy_remaining_queries, `"${t.created_time ? new Date(t.created_time).toLocaleString('zh-CN') : '-'}"`].join(','))].join('\n'), l = document.createElement('a'); l.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })); l.download = `grok_tokens_${new Date().toISOString().slice(0, 10)}.csv`; l.style.display = 'none'; document.body.appendChild(l); l.click(); document.body.removeChild(l); URL.revokeObjectURL(l.href); showToast(`已导出 ${selectedTokens.size} 个 Token`, 'success') }
     showToast = (m, t = 'info') => { const d = document.createElement('div'), bc = { success: 'bg-green-600', error: 'bg-destructive', info: 'bg-primary' }; d.className = `fixed bottom-4 right-4 ${bc[t] || bc.info} text-white px-4 py-2.5 rounded-lg shadow-lg text-sm font-medium z-50 animate-slide-up`; d.textContent = m; document.body.appendChild(d); setTimeout(() => { d.style.opacity = '0'; d.style.transition = 'opacity .3s'; setTimeout(() => d.parentNode && document.body.removeChild(d), 300) }, 2000) }
