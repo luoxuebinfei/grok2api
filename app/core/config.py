@@ -111,6 +111,13 @@ class ConfigManager:
         """重新加载配置"""
         self.global_config = self.load("global")
         self.grok_config = self.load("grok")
+        
+        # 重新配置代理池
+        from app.core.proxy_pool import proxy_pool
+        proxy_url = self.grok_config.get("proxy_url", "")
+        proxy_pool_url = self.grok_config.get("proxy_pool_url", "")
+        proxy_pool_interval = self.grok_config.get("proxy_pool_interval", 300)
+        proxy_pool.configure(proxy_url, proxy_pool_url, proxy_pool_interval)
     
     async def _save_file(self, updates: Dict[str, Dict[str, Any]]) -> None:
         """保存到文件"""

@@ -85,13 +85,13 @@ _MODEL_CONFIG: Dict[str, Dict[str, Any]] = {
         "default_top_p": 0.95
     },
     "grok-4.1-thinking": {
-        "grok_model": ("grok-4-1-thinking-1108b", "MODEL_MODE_AUTO"),
-        "rate_limit_model": "grok-4-1-thinking-1108b",
+        "grok_model": ("grok-4-1-thinking-1129", "MODEL_MODE_GROK_4_1_THINKING"),
+        "rate_limit_model": "grok-4-1-thinking-1129",
         "cost": {"type": "high_cost", "multiplier": 1, "description": "计1次调用"},
         "requires_super": False,
         "display_name": "Grok 4.1 Thinking",
         "description": "Grok 4.1 model with advanced thinking and tool capabilities",
-        "raw_model_path": "xai/grok-4-1-thinking-1108b",
+        "raw_model_path": "xai/grok-4-1-thinking-1129",
         "default_temperature": 1.0,
         "default_max_output_tokens": 32768,
         "supported_max_output_tokens": 131072,
