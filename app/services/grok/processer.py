@@ -4,6 +4,8 @@ import orjson
 import uuid
 import time
 import asyncio
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import AsyncGenerator, Tuple
 
 from app.core.config import setting
@@ -18,6 +20,11 @@ from app.models.openai_schema import (
     OpenAIChatCompletionChunkMessage
 )
 from app.services.grok.cache import image_cache_service, video_cache_service
+
+
+# 独立线程池用于流式响应处理，避免与默认线程池竞争
+# max_workers=128 支持高并发场景
+_stream_executor = ThreadPoolExecutor(max_workers=128, thread_name_prefix="stream_producer")
 
 
 class StreamTimeoutManager:
@@ -54,6 +61,112 @@ class StreamTimeoutManager:
     def duration(self) -> float:
         """获取总耗时"""
         return asyncio.get_event_loop().time() - self.start_time
+
+
+class AsyncLineIterator:
+    """异步行迭代器 - 包装同步 iter_lines 并支持心跳"""
+    
+    def __init__(self, response, heartbeat_interval: float = 15.0):
+        self.response = response
+        self.heartbeat_interval = heartbeat_interval
+        self._queue: asyncio.Queue = None
+        self._producer_task = None
+        self._exhausted = False
+        self._loop = None
+        self._stop_event = threading.Event()
+        self._closed = False
+    
+    def __aiter__(self):
+        return self
+    
+    async def _start_producer(self):
+        """启动生产者任务"""
+        if self._queue is not None:
+            return
+        
+        self._queue = asyncio.Queue(maxsize=1)
+        self._loop = asyncio.get_running_loop()
+        stop_event = self._stop_event
+        response = self.response
+        queue = self._queue
+        loop = self._loop
+        
+        def producer():
+            """在线程中迭代响应"""
+            try:
+                for line in response.iter_lines():
+                    if stop_event.is_set():
+                        break
+                    future = asyncio.run_coroutine_threadsafe(
+                        queue.put(("data", line)),
+                        loop
+                    )
+                    try:
+                        future.result(timeout=30)
+                    except Exception:
+                        break
+            except Exception as e:
+                if not stop_event.is_set():
+                    try:
+                        future = asyncio.run_coroutine_threadsafe(
+                            queue.put(("error", e)),
+                            loop
+                        )
+                        future.result(timeout=5)
+                    except Exception:
+                        pass
+            finally:
+                if not stop_event.is_set():
+                    try:
+                        future = asyncio.run_coroutine_threadsafe(
+                            queue.put(("done", None)),
+                            loop
+                        )
+                        future.result(timeout=5)
+                    except Exception:
+                        pass
+        
+        self._producer_task = self._loop.run_in_executor(_stream_executor, producer)
+    
+    async def __anext__(self) -> bytes | None:
+        """异步获取下一行，超时时返回 None 表示需要发送心跳"""
+        if self._exhausted or self._closed:
+            raise StopAsyncIteration
+        
+        await self._start_producer()
+        
+        try:
+            msg_type, data = await asyncio.wait_for(
+                self._queue.get(),
+                timeout=self.heartbeat_interval
+            )
+            
+            if msg_type == "done":
+                self._exhausted = True
+                raise StopAsyncIteration
+            elif msg_type == "error":
+                self._exhausted = True
+                raise data
+            else:
+                return data
+                
+        except asyncio.TimeoutError:
+            return None
+    
+    def close(self):
+        """关闭迭代器并清理资源"""
+        if self._closed:
+            return
+        self._closed = True
+        self._stop_event.set()
+        self._exhausted = True
+        
+        # 关闭底层响应以中断 iter_lines 阻塞
+        if hasattr(self.response, 'close'):
+            try:
+                self.response.close()
+            except Exception:
+                pass
 
 
 class GrokResponseProcessor:
@@ -163,8 +276,12 @@ class GrokResponseProcessor:
             )
             return f"data: {chunk_data.model_dump_json()}\n\n"
 
+        # 心跳间隔（秒）
+        heartbeat_interval = setting.grok_config.get("stream_heartbeat_interval", 15)
+
         try:
-            for chunk in response.iter_lines():
+            async_iter = AsyncLineIterator(response, heartbeat_interval)
+            async for chunk in async_iter:
                 # 超时检查
                 is_timeout, timeout_msg = timeout_mgr.check_timeout()
                 if is_timeout:
@@ -172,6 +289,12 @@ class GrokResponseProcessor:
                     yield make_chunk("", "stop")
                     yield "data: [DONE]\n\n"
                     return
+
+                # chunk 为 None 表示心跳超时，发送 SSE 注释保持连接
+                if chunk is None:
+                    yield ": heartbeat\n\n"
+                    logger.debug("[Processor] 发送心跳")
+                    continue
 
                 logger.debug(f"[Processor] 收到数据块: {len(chunk)} bytes")
                 if not chunk:
@@ -350,6 +473,9 @@ class GrokResponseProcessor:
             yield make_chunk(f"处理错误: {e}", "error")
             yield "data: [DONE]\n\n"
         finally:
+            # 关闭异步迭代器，释放生产者线程
+            if 'async_iter' in locals():
+                async_iter.close()
             if not response_closed and hasattr(response, 'close'):
                 try:
                     response.close()
