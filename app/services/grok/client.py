@@ -317,6 +317,7 @@ class GrokClient:
                 msg = data[:200] if data else "未知错误"
         
         asyncio.create_task(token_manager.record_failure(token, response.status_code, msg))
+        asyncio.create_task(token_manager.apply_cooldown(token, response.status_code))
         raise GrokApiException(
             f"请求失败: {response.status_code} - {msg}",
             "HTTP_ERROR",

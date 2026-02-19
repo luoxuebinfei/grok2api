@@ -71,9 +71,23 @@ async def lifespan(app: FastAPI):
     # 3. 异步加载 token 数据
     await token_manager._load_data()
     logger.info("[Grok2API] Token数据加载完成")
+
+    # 3.5. 加载 API Key 数据
+    from app.services.api_keys import api_key_manager
+    await api_key_manager.init()
+    logger.info("[Grok2API] API Key数据加载完成")
+
+    # 3.6. 加载统计和日志数据
+    from app.services.request_stats import request_stats
+    from app.services.request_logger import request_logger
+    await request_stats.init()
+    await request_logger.init()
+    logger.info("[Grok2API] 统计和日志数据加载完成")
     
     # 4. 启动批量保存任务
     await token_manager.start_batch_save()
+    await request_stats.start_batch_save()
+    await request_logger.start_batch_save()
 
     # 5. 管理MCP服务的生命周期
     mcp_lifespan_context = mcp_app.lifespan(app)
@@ -93,6 +107,13 @@ async def lifespan(app: FastAPI):
         # 2. 关闭批量保存任务并刷新数据
         await token_manager.shutdown()
         logger.info("[Token] Token管理器已关闭")
+
+        # 2.5. 关闭统计和日志的保存任务
+        from app.services.request_stats import request_stats
+        from app.services.request_logger import request_logger
+        await request_stats.shutdown()
+        await request_logger.shutdown()
+        logger.info("[Grok2API] 统计和日志保存任务已关闭")
         
         # 3. 关闭核心服务
         await storage_manager.close()

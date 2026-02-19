@@ -1,6 +1,7 @@
 """管理接口 - Token管理和系统配置"""
 
 import secrets
+import time
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -11,6 +12,8 @@ from pydantic import BaseModel
 from app.core.config import setting
 from app.core.logger import logger
 from app.services.grok.token import token_manager
+from app.services.request_stats import request_stats
+from app.services.request_logger import request_logger
 from app.models.grok_models import TokenType
 
 
@@ -61,6 +64,11 @@ class TokenInfo(BaseModel):
     status: str
     tags: List[str] = []
     note: str = ""
+    cooldown_until: Optional[int] = None
+    cooldown_remaining: int = 0
+    last_failure_time: Optional[int] = None
+    last_failure_reason: str = ""
+    limit_reason: str = ""
 
 
 class TokenListResponse(BaseModel):
@@ -121,30 +129,71 @@ def parse_created_time(created_time) -> Optional[int]:
     return None
 
 
+def _get_cooldown_remaining_ms(token_data: Dict[str, Any], now_ms: Optional[int] = None) -> int:
+    """获取冷却剩余时间（毫秒）"""
+    cooldown_until = token_data.get("cooldownUntil")
+    if not cooldown_until:
+        return 0
+
+    try:
+        now = now_ms if now_ms is not None else int(time.time() * 1000)
+        remaining = int(cooldown_until) - now
+        return remaining if remaining > 0 else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+def _is_token_in_cooldown(token_data: Dict[str, Any], now_ms: Optional[int] = None) -> bool:
+    """判断Token是否处于429冷却中"""
+    return _get_cooldown_remaining_ms(token_data, now_ms) > 0
+
+
 def calculate_token_stats(tokens: Dict[str, Any], token_type: str) -> Dict[str, int]:
     """计算Token统计"""
     total = len(tokens)
     expired = sum(1 for t in tokens.values() if t.get("status") == "expired")
+    now_ms = int(time.time() * 1000)
+    cooldown = 0
+    exhausted = 0
+    unused = 0
+    active = 0
 
-    if token_type == "normal":
-        unused = sum(1 for t in tokens.values()
-                    if t.get("status") != "expired" and t.get("remainingQueries", -1) == -1)
-        limited = sum(1 for t in tokens.values()
-                     if t.get("status") != "expired" and t.get("remainingQueries", -1) == 0)
-        active = sum(1 for t in tokens.values()
-                    if t.get("status") != "expired" and t.get("remainingQueries", -1) > 0)
-    else:
-        unused = sum(1 for t in tokens.values()
-                    if t.get("status") != "expired" and
-                    t.get("remainingQueries", -1) == -1 and t.get("heavyremainingQueries", -1) == -1)
-        limited = sum(1 for t in tokens.values()
-                     if t.get("status") != "expired" and
-                     (t.get("remainingQueries", -1) == 0 or t.get("heavyremainingQueries", -1) == 0))
-        active = sum(1 for t in tokens.values()
-                    if t.get("status") != "expired" and
-                    (t.get("remainingQueries", -1) > 0 or t.get("heavyremainingQueries", -1) > 0))
+    for token_data in tokens.values():
+        if token_data.get("status") == "expired":
+            continue
 
-    return {"total": total, "unused": unused, "limited": limited, "expired": expired, "active": active}
+        if _is_token_in_cooldown(token_data, now_ms):
+            cooldown += 1
+            continue
+
+        remaining = token_data.get("remainingQueries", -1)
+        heavy_remaining = token_data.get("heavyremainingQueries", -1)
+
+        if token_type == "normal":
+            if remaining == -1:
+                unused += 1
+            elif remaining == 0:
+                exhausted += 1
+            else:
+                active += 1
+        else:
+            if remaining == -1 and heavy_remaining == -1:
+                unused += 1
+            elif remaining == 0 or heavy_remaining == 0:
+                exhausted += 1
+            else:
+                active += 1
+
+    limited = cooldown + exhausted
+    return {
+        "total": total,
+        "unused": unused,
+        "limited": limited,
+        "cooldown": cooldown,
+        "exhausted": exhausted,
+        "expired": expired,
+        "active": active,
+    }
 
 
 def verify_admin_session(authorization: Optional[str] = Header(None)) -> bool:
@@ -168,18 +217,22 @@ def get_token_status(token_data: Dict[str, Any], token_type: str) -> str:
     """获取Token状态"""
     if token_data.get("status") == "expired":
         return "失效"
-    
+
     remaining = token_data.get("remainingQueries", -1)
     heavy_remaining = token_data.get("heavyremainingQueries", -1)
-    
-    relevant = max(remaining, heavy_remaining) if token_type == "ssoSuper" else remaining
-    
-    if relevant == -1:
-        return "未使用"
-    elif relevant == 0:
-        return "限流中"
-    else:
+
+    if token_type == "ssoSuper":
+        if remaining == -1 and heavy_remaining == -1:
+            return "未使用"
+        if _is_token_in_cooldown(token_data) or remaining == 0 or heavy_remaining == 0:
+            return "限流中"
         return "正常"
+
+    if remaining == -1:
+        return "未使用"
+    if _is_token_in_cooldown(token_data) or remaining == 0:
+        return "限流中"
+    return "正常"
 
 
 def _calculate_dir_size(directory: Path) -> int:
@@ -275,32 +328,61 @@ async def list_tokens(_: bool = Depends(verify_admin_session)) -> TokenListRespo
 
         all_tokens = token_manager.get_tokens()
         token_list: List[TokenInfo] = []
+        now_ms = int(time.time() * 1000)
 
         # 普通Token
         for token, data in all_tokens.get(TokenType.NORMAL.value, {}).items():
-            token_list.append(TokenInfo(
-                token=token,
-                token_type="sso",
-                created_time=parse_created_time(data.get("createdTime")),
-                remaining_queries=data.get("remainingQueries", -1),
-                heavy_remaining_queries=data.get("heavyremainingQueries", -1),
-                status=get_token_status(data, "sso"),
-                tags=data.get("tags", []),
-                note=data.get("note", "")
-            ))
+            cooldown_remaining_ms = _get_cooldown_remaining_ms(data, now_ms)
+            cooldown_until = data.get("cooldownUntil") if cooldown_remaining_ms else None
+            limit_reason = "cooldown" if cooldown_remaining_ms else ""
+            if not limit_reason and data.get("remainingQueries", -1) == 0:
+                limit_reason = "exhausted"
+
+            token_list.append(
+                TokenInfo(
+                    token=token,
+                    token_type="sso",
+                    created_time=parse_created_time(data.get("createdTime")),
+                    remaining_queries=data.get("remainingQueries", -1),
+                    heavy_remaining_queries=data.get("heavyremainingQueries", -1),
+                    status=get_token_status(data, "sso"),
+                    tags=data.get("tags", []),
+                    note=data.get("note", ""),
+                    cooldown_until=cooldown_until,
+                    cooldown_remaining=(cooldown_remaining_ms + 999) // 1000 if cooldown_remaining_ms else 0,
+                    last_failure_time=data.get("lastFailureTime") or None,
+                    last_failure_reason=data.get("lastFailureReason") or "",
+                    limit_reason=limit_reason,
+                )
+            )
 
         # Super Token
         for token, data in all_tokens.get(TokenType.SUPER.value, {}).items():
-            token_list.append(TokenInfo(
-                token=token,
-                token_type="ssoSuper",
-                created_time=parse_created_time(data.get("createdTime")),
-                remaining_queries=data.get("remainingQueries", -1),
-                heavy_remaining_queries=data.get("heavyremainingQueries", -1),
-                status=get_token_status(data, "ssoSuper"),
-                tags=data.get("tags", []),
-                note=data.get("note", "")
-            ))
+            cooldown_remaining_ms = _get_cooldown_remaining_ms(data, now_ms)
+            cooldown_until = data.get("cooldownUntil") if cooldown_remaining_ms else None
+            limit_reason = "cooldown" if cooldown_remaining_ms else ""
+            if not limit_reason and (
+                data.get("remainingQueries", -1) == 0 or data.get("heavyremainingQueries", -1) == 0
+            ):
+                limit_reason = "exhausted"
+
+            token_list.append(
+                TokenInfo(
+                    token=token,
+                    token_type="ssoSuper",
+                    created_time=parse_created_time(data.get("createdTime")),
+                    remaining_queries=data.get("remainingQueries", -1),
+                    heavy_remaining_queries=data.get("heavyremainingQueries", -1),
+                    status=get_token_status(data, "ssoSuper"),
+                    tags=data.get("tags", []),
+                    note=data.get("note", ""),
+                    cooldown_until=cooldown_until,
+                    cooldown_remaining=(cooldown_remaining_ms + 999) // 1000 if cooldown_remaining_ms else 0,
+                    last_failure_time=data.get("lastFailureTime") or None,
+                    last_failure_reason=data.get("lastFailureReason") or "",
+                    limit_reason=limit_reason,
+                )
+            )
 
         logger.debug(f"[Admin] Token列表获取成功: {len(token_list)}个")
         return TokenListResponse(success=True, data=token_list, total=len(token_list))
@@ -605,24 +687,53 @@ async def test_token(request: TestTokenRequest, _: bool = Depends(verify_admin_s
                 "data": {
                     "valid": True,
                     "remaining_queries": result.get("remainingTokens", -1),
-                    "limit": result.get("limit", -1)
-                }
+                    "limit": result.get("limit", -1),
+                },
             }
-        else:
-            logger.warning(f"[Admin] Token测试失败: {request.token[:10]}...")
 
-            all_tokens = token_manager.get_tokens()
-            token_data = all_tokens.get(token_type.value, {}).get(request.token)
+        logger.warning(f"[Admin] Token测试失败: {request.token[:10]}...")
 
-            if token_data:
-                if token_data.get("status") == "expired":
-                    return {"success": False, "message": "Token已失效", "data": {"valid": False, "error_type": "expired", "error_code": 401}}
-                elif token_data.get("remainingQueries") == 0:
-                    return {"success": False, "message": "Token已被限流", "data": {"valid": False, "error_type": "limited", "error_code": "other"}}
-                else:
-                    return {"success": False, "message": "服务器被block或网络错误", "data": {"valid": False, "error_type": "blocked", "error_code": 403}}
-            else:
-                return {"success": False, "message": "Token数据异常", "data": {"valid": False, "error_type": "unknown", "error_code": "data_error"}}
+        all_tokens = token_manager.get_tokens()
+        token_data = all_tokens.get(token_type.value, {}).get(request.token)
+
+        if token_data:
+            if token_data.get("status") == "expired":
+                return {
+                    "success": False,
+                    "message": "Token已失效",
+                    "data": {"valid": False, "error_type": "expired", "error_code": 401},
+                }
+
+            cooldown_remaining_ms = _get_cooldown_remaining_ms(token_data)
+            if cooldown_remaining_ms:
+                return {
+                    "success": False,
+                    "message": "Token冷却中",
+                    "data": {
+                        "valid": False,
+                        "error_type": "cooldown",
+                        "cooldown_remaining": int((cooldown_remaining_ms + 999) / 1000),
+                    },
+                }
+
+            if token_data.get("remainingQueries") == 0 or token_data.get("heavyremainingQueries") == 0:
+                return {
+                    "success": False,
+                    "message": "Token已被限流",
+                    "data": {"valid": False, "error_type": "exhausted", "error_code": "other"},
+                }
+
+            return {
+                "success": False,
+                "message": "服务器被block或网络错误",
+                "data": {"valid": False, "error_type": "blocked", "error_code": 403},
+            }
+
+        return {
+            "success": False,
+            "message": "Token数据异常",
+            "data": {"valid": False, "error_type": "unknown", "error_code": "data_error"},
+        }
 
     except HTTPException:
         raise
@@ -635,94 +746,84 @@ async def test_token(request: TestTokenRequest, _: bool = Depends(verify_admin_s
 async def batch_test_tokens(request: BatchTestTokensRequest, _: bool = Depends(verify_admin_session)) -> Dict[str, Any]:
     """批量测试Token可用性"""
     import asyncio
-    
+
     try:
-        # 根据模式获取待测试的 token 列表
         tokens_to_test: List[Dict[str, str]] = []
-        
+        all_tokens = token_manager.get_tokens()
+        type_mapping = {TokenType.NORMAL.value: "sso", TokenType.SUPER.value: "ssoSuper"}
+
         if request.mode == "selected":
             if not request.tokens:
                 raise HTTPException(status_code=400, detail={"error": "未选择任何Token", "code": "NO_TOKENS"})
             tokens_to_test = request.tokens
-            
+
         elif request.mode == "all":
-            all_tokens = token_manager.get_tokens()
-            # 存储键到前端键的映射
-            type_mapping = {TokenType.NORMAL.value: "sso", TokenType.SUPER.value: "ssoSuper"}
             for storage_type, api_type in type_mapping.items():
                 for token in all_tokens.get(storage_type, {}).keys():
                     tokens_to_test.append({"token": token, "token_type": api_type})
 
         elif request.mode == "filter":
-            all_tokens = token_manager.get_tokens()
-            # 存储键到前端键的映射
-            type_mapping = {TokenType.NORMAL.value: "sso", TokenType.SUPER.value: "ssoSuper"}
             for storage_type, api_type in type_mapping.items():
                 if request.token_type and request.token_type != api_type:
                     continue
                 for token, data in all_tokens.get(storage_type, {}).items():
-                    if request.status:
-                        token_status = get_token_status(data)
-                        if token_status != request.status:
-                            continue
+                    if request.status and get_token_status(data, api_type) != request.status:
+                        continue
                     tokens_to_test.append({"token": token, "token_type": api_type})
         else:
             raise HTTPException(status_code=400, detail={"error": "无效的测试模式", "code": "INVALID_MODE"})
-        
+
         if not tokens_to_test:
             return {"success": True, "data": {"total": 0, "valid": 0, "invalid": 0, "results": []}}
-        
+
         logger.info(f"[Admin] 开始批量测试 {len(tokens_to_test)} 个Token，并发数: {request.concurrency}")
-        
-        # 并发控制
+
         semaphore = asyncio.Semaphore(request.concurrency)
-        results = []
-        
+
         async def test_single_token(token_info: Dict[str, str]) -> Dict[str, Any]:
             async with semaphore:
                 token = token_info["token"]
                 token_type = token_info["token_type"]
                 token_short = token[:10] + "..."
-                
+                storage_type = TokenType.NORMAL.value if token_type == "sso" else TokenType.SUPER.value
+
                 try:
                     auth_token = f"sso-rw={token};sso={token}"
                     result = await token_manager.check_limits(auth_token, "grok-4-fast")
-                    
+
                     if result:
                         return {
                             "token": token_short,
                             "token_type": token_type,
                             "valid": True,
                             "remaining": result.get("remainingTokens", -1),
-                            "message": "Token有效"
+                            "message": "Token有效",
                         }
-                    else:
-                        # 获取详细错误信息
-                        all_tokens = token_manager.get_tokens()
-                        token_data = all_tokens.get(token_type, {}).get(token)
-                        
-                        error_type = "unknown"
-                        message = "Token无效"
-                        
-                        if token_data:
-                            if token_data.get("status") == "expired":
-                                error_type = "expired"
-                                message = "Token已失效"
-                            elif token_data.get("remainingQueries") == 0:
-                                error_type = "limited"
-                                message = "Token已被限流"
-                            else:
-                                error_type = "blocked"
-                                message = "服务器被block或网络错误"
-                        
-                        return {
-                            "token": token_short,
-                            "token_type": token_type,
-                            "valid": False,
-                            "error_type": error_type,
-                            "message": message
-                        }
-                        
+
+                    token_data = all_tokens.get(storage_type, {}).get(token)
+
+                    error_type = "unknown"
+                    message = "Token无效"
+
+                    if token_data:
+                        if token_data.get("status") == "expired":
+                            error_type = "expired"
+                            message = "Token已失效"
+                        elif _is_token_in_cooldown(token_data) or token_data.get("remainingQueries") == 0 or token_data.get("heavyremainingQueries") == 0:
+                            error_type = "limited"
+                            message = "Token已被限流"
+                        else:
+                            error_type = "blocked"
+                            message = "服务器被block或网络错误"
+
+                    return {
+                        "token": token_short,
+                        "token_type": token_type,
+                        "valid": False,
+                        "error_type": error_type,
+                        "message": message,
+                    }
+
                 except Exception as e:
                     logger.error(f"[Admin] 测试Token异常 {token_short}: {e}")
                     return {
@@ -730,31 +831,241 @@ async def batch_test_tokens(request: BatchTestTokensRequest, _: bool = Depends(v
                         "token_type": token_type,
                         "valid": False,
                         "error_type": "error",
-                        "message": f"测试异常: {str(e)[:50]}"
+                        "message": f"测试异常: {str(e)[:50]}",
                     }
-        
-        # 并发执行所有测试
+
         tasks = [test_single_token(t) for t in tokens_to_test]
         results = await asyncio.gather(*tasks)
-        
-        # 统计结果
+
         valid_count = sum(1 for r in results if r["valid"])
         invalid_count = len(results) - valid_count
-        
+
         logger.info(f"[Admin] 批量测试完成: 总计 {len(results)}, 有效 {valid_count}, 无效 {invalid_count}")
-        
+
         return {
             "success": True,
             "data": {
                 "total": len(results),
                 "valid": valid_count,
                 "invalid": invalid_count,
-                "results": results
-            }
+                "results": results,
+            },
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"[Admin] 批量测试异常: {e}")
         raise HTTPException(status_code=500, detail={"error": f"批量测试失败: {e}", "code": "BATCH_TEST_ERROR"})
+
+
+@router.post("/api/tokens/refresh-all")
+async def refresh_all_tokens(_: bool = Depends(verify_admin_session)) -> Dict[str, Any]:
+    """刷新所有Token剩余次数"""
+    import asyncio
+
+    try:
+        progress = token_manager.get_refresh_progress()
+        if progress.get("running"):
+            return {"success": False, "data": progress, "message": "刷新任务正在进行中"}
+
+        asyncio.create_task(token_manager.refresh_all_limits())
+        return {"success": True, "message": "刷新任务已启动"}
+    except Exception as e:
+        logger.error(f"[Admin] 刷新Token异常: {e}")
+        raise HTTPException(status_code=500, detail={"error": f"刷新失败: {e}"})
+
+
+@router.get("/api/tokens/refresh-progress")
+async def get_refresh_progress(_: bool = Depends(verify_admin_session)) -> Dict[str, Any]:
+    """获取Token刷新进度"""
+    try:
+        progress = token_manager.get_refresh_progress()
+        return {"success": True, "data": progress}
+    except Exception as e:
+        logger.error(f"[Admin] 获取刷新进度异常: {e}")
+        raise HTTPException(status_code=500, detail={"error": f"获取进度失败: {e}"})
+
+
+@router.get("/api/request-stats")
+async def get_request_stats(_: bool = Depends(verify_admin_session)) -> Dict[str, Any]:
+    """获取请求统计数据"""
+    try:
+        stats = request_stats.get_stats(hours=24, days=7)
+        return {"success": True, "data": stats}
+    except Exception as e:
+        logger.error(f"[Admin] 获取请求统计异常: {e}")
+        raise HTTPException(status_code=500, detail={"error": f"获取统计失败: {e}"})
+
+
+# === API Key 管理 ===
+
+class AddKeyRequest(BaseModel):
+    name: str
+
+
+class UpdateKeyNameRequest(BaseModel):
+    key: str
+    name: str
+
+
+class UpdateKeyStatusRequest(BaseModel):
+    key: str
+    is_active: bool
+
+
+class BatchAddKeyRequest(BaseModel):
+    name_prefix: str
+    count: int
+
+
+class BatchDeleteKeyRequest(BaseModel):
+    keys: List[str]
+
+
+class BatchUpdateKeyStatusRequest(BaseModel):
+    keys: List[str]
+    is_active: bool
+
+
+@router.get("/api/keys")
+async def list_keys(_: bool = Depends(verify_admin_session)) -> Dict[str, Any]:
+    """获取 Key 列表"""
+    try:
+        from app.services.api_keys import api_key_manager
+        if not api_key_manager._loaded:
+            await api_key_manager.init()
+
+        keys = api_key_manager.get_all_keys()
+        global_key = setting.grok_config.get("api_key")
+        result_keys = []
+
+        for k in keys:
+            result_keys.append({
+                **k,
+                "display_key": f"{k['key'][:6]}...{k['key'][-4:]}"
+            })
+
+        return {
+            "success": True,
+            "data": result_keys,
+            "global_key_set": bool(global_key),
+        }
+    except Exception as e:
+        logger.error(f"[Admin] 获取Key列表失败: {e}")
+        raise HTTPException(status_code=500, detail={"error": f"获取失败: {e}"})
+
+
+@router.post("/api/keys/add")
+async def add_key(request: AddKeyRequest, _: bool = Depends(verify_admin_session)) -> Dict[str, Any]:
+    """添加 Key"""
+    try:
+        from app.services.api_keys import api_key_manager
+        new_key = await api_key_manager.add_key(request.name)
+        return {"success": True, "data": new_key, "message": "Key创建成功"}
+    except Exception as e:
+        logger.error(f"[Admin] 添加Key失败: {e}")
+        raise HTTPException(status_code=500, detail={"error": f"添加失败: {e}"})
+
+
+@router.post("/api/keys/delete")
+async def delete_key(request: Dict[str, str], _: bool = Depends(verify_admin_session)) -> Dict[str, Any]:
+    """删除 Key"""
+    try:
+        from app.services.api_keys import api_key_manager
+        key = request.get("key")
+        if not key:
+            raise ValueError("Key cannot be empty")
+
+        if await api_key_manager.delete_key(key):
+            return {"success": True, "message": "Key删除成功"}
+        return {"success": False, "message": "Key不存在"}
+    except Exception as e:
+        logger.error(f"[Admin] 删除Key失败: {e}")
+        raise HTTPException(status_code=500, detail={"error": f"删除失败: {e}"})
+
+
+@router.post("/api/keys/status")
+async def update_key_status(request: UpdateKeyStatusRequest, _: bool = Depends(verify_admin_session)) -> Dict[str, Any]:
+    """更新 Key 状态"""
+    try:
+        from app.services.api_keys import api_key_manager
+        if await api_key_manager.update_key_status(request.key, request.is_active):
+            return {"success": True, "message": "状态更新成功"}
+        return {"success": False, "message": "Key不存在"}
+    except Exception as e:
+        logger.error(f"[Admin] 更新Key状态失败: {e}")
+        raise HTTPException(status_code=500, detail={"error": f"更新失败: {e}"})
+
+
+@router.post("/api/keys/name")
+async def update_key_name(request: UpdateKeyNameRequest, _: bool = Depends(verify_admin_session)) -> Dict[str, Any]:
+    """更新 Key 备注"""
+    try:
+        from app.services.api_keys import api_key_manager
+        if await api_key_manager.update_key_name(request.key, request.name):
+            return {"success": True, "message": "备注更新成功"}
+        return {"success": False, "message": "Key不存在"}
+    except Exception as e:
+        logger.error(f"[Admin] 更新Key备注失败: {e}")
+        raise HTTPException(status_code=500, detail={"error": f"更新失败: {e}"})
+
+
+@router.post("/api/keys/batch-add")
+async def batch_add_keys(request: BatchAddKeyRequest, _: bool = Depends(verify_admin_session)) -> Dict[str, Any]:
+    """批量添加 Key"""
+    try:
+        from app.services.api_keys import api_key_manager
+        new_keys = await api_key_manager.batch_add_keys(request.name_prefix, request.count)
+        return {"success": True, "data": new_keys, "message": f"成功创建 {len(new_keys)} 个 Key"}
+    except Exception as e:
+        logger.error(f"[Admin] 批量添加Key失败: {e}")
+        raise HTTPException(status_code=500, detail={"error": f"批量添加失败: {e}"})
+
+
+@router.post("/api/keys/batch-delete")
+async def batch_delete_keys(request: BatchDeleteKeyRequest, _: bool = Depends(verify_admin_session)) -> Dict[str, Any]:
+    """批量删除 Key"""
+    try:
+        from app.services.api_keys import api_key_manager
+        deleted_count = await api_key_manager.batch_delete_keys(request.keys)
+        return {"success": True, "message": f"成功删除 {deleted_count} 个 Key"}
+    except Exception as e:
+        logger.error(f"[Admin] 批量删除Key失败: {e}")
+        raise HTTPException(status_code=500, detail={"error": f"批量删除失败: {e}"})
+
+
+@router.post("/api/keys/batch-status")
+async def batch_update_key_status(request: BatchUpdateKeyStatusRequest, _: bool = Depends(verify_admin_session)) -> Dict[str, Any]:
+    """批量更新 Key 状态"""
+    try:
+        from app.services.api_keys import api_key_manager
+        updated_count = await api_key_manager.batch_update_keys_status(request.keys, request.is_active)
+        return {"success": True, "message": f"成功更新 {updated_count} 个 Key 状态"}
+    except Exception as e:
+        logger.error(f"[Admin] 批量更新Key状态失败: {e}")
+        raise HTTPException(status_code=500, detail={"error": f"批量更新失败: {e}"})
+
+
+# === 日志审计 ===
+
+@router.get("/api/logs")
+async def get_logs(limit: int = 1000, _: bool = Depends(verify_admin_session)) -> Dict[str, Any]:
+    """获取请求日志"""
+    try:
+        logs = await request_logger.get_logs(limit)
+        return {"success": True, "data": logs}
+    except Exception as e:
+        logger.error(f"[Admin] 获取日志失败: {e}")
+        raise HTTPException(status_code=500, detail={"error": f"获取失败: {e}"})
+
+
+@router.post("/api/logs/clear")
+async def clear_logs(_: bool = Depends(verify_admin_session)) -> Dict[str, Any]:
+    """清空日志"""
+    try:
+        await request_logger.clear_logs()
+        return {"success": True, "message": "日志已清空"}
+    except Exception as e:
+        logger.error(f"[Admin] 清空日志失败: {e}")
+        raise HTTPException(status_code=500, detail={"error": f"清空失败: {e}"})

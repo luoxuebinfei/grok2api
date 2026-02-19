@@ -13,7 +13,7 @@ router = APIRouter(tags=["模型"])
 
 
 @router.get("/models")
-async def list_models(_: Optional[str] = Depends(auth_manager.verify)) -> Dict[str, Any]:
+async def list_models(_: Dict[str, Any] = Depends(auth_manager.verify)) -> Dict[str, Any]:
     """获取可用模型列表"""
     try:
         logger.debug("[Models] 请求模型列表")
@@ -59,7 +59,7 @@ async def list_models(_: Optional[str] = Depends(auth_manager.verify)) -> Dict[s
 
 
 @router.get("/models/{model_id}")
-async def get_model(model_id: str, _: Optional[str] = Depends(auth_manager.verify)) -> Dict[str, Any]:
+async def get_model(model_id: str, _: Dict[str, Any] = Depends(auth_manager.verify)) -> Dict[str, Any]:
     """获取特定模型信息"""
     try:
         logger.debug(f"[Models] 请求模型: {model_id}")

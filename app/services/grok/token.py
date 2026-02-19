@@ -24,6 +24,11 @@ MAX_FAILURES = 3
 TOKEN_INVALID = 401
 STATSIG_INVALID = 403
 
+# 冷却常量
+COOLDOWN_REQUESTS = 5           # 次数冷却：跳过 N 次请求
+COOLDOWN_429_WITH_QUOTA = 3600  # 429有额度冷却时间（秒）
+COOLDOWN_429_NO_QUOTA = 36000   # 429无额度冷却时间（秒）
+
 
 class GrokTokenManager:
     """Token管理器（单例）"""
@@ -50,6 +55,19 @@ class GrokTokenManager:
         self._save_pending = False  # 标记是否有待保存的数据
         self._save_task = None  # 后台保存任务
         self._shutdown = False  # 关闭标志
+
+        # 冷却状态
+        self._cooldown_counts: Dict[str, int] = {}  # Token -> 剩余冷却次数
+
+        # 刷新状态
+        self._refresh_lock = asyncio.Lock()
+        self._refresh_progress: Dict[str, Any] = {
+            "running": False,
+            "current": 0,
+            "total": 0,
+            "success": 0,
+            "failed": 0,
+        }
         
         self._initialized = True
         logger.debug(f"[Token] 初始化完成: {self.token_file}")
@@ -61,7 +79,7 @@ class GrokTokenManager:
     async def _load_data(self) -> None:
         """异步加载Token数据（支持多进程）"""
         default = {TokenType.NORMAL.value: {}, TokenType.SUPER.value: {}}
-        
+
         try:
             if self.token_file.exists():
                 # 使用进程锁读取文件
@@ -79,6 +97,44 @@ class GrokTokenManager:
         except Exception as e:
             logger.error(f"[Token] 加载失败: {e}")
             self.token_data = default
+
+        self._ensure_token_schema()
+
+    def _ensure_token_schema(self) -> None:
+        """确保Token数据结构兼容旧版本"""
+        if not isinstance(self.token_data, dict):
+            self.token_data = {TokenType.NORMAL.value: {}, TokenType.SUPER.value: {}}
+            return
+
+        migrated = False
+
+        # 兼容旧 normal key
+        if TokenType.NORMAL.value not in self.token_data:
+            for legacy in ("sso", "normal", "sso_normal"):
+                if legacy in self.token_data:
+                    self.token_data[TokenType.NORMAL.value] = self.token_data.pop(legacy)
+                    migrated = True
+                    break
+            else:
+                self.token_data[TokenType.NORMAL.value] = {}
+
+        # 兼容旧 super key
+        if TokenType.SUPER.value not in self.token_data:
+            for legacy in ("super", "sso_super"):
+                if legacy in self.token_data:
+                    self.token_data[TokenType.SUPER.value] = self.token_data.pop(legacy)
+                    migrated = True
+                    break
+            else:
+                self.token_data[TokenType.SUPER.value] = {}
+
+        if not isinstance(self.token_data.get(TokenType.NORMAL.value), dict):
+            self.token_data[TokenType.NORMAL.value] = {}
+        if not isinstance(self.token_data.get(TokenType.SUPER.value), dict):
+            self.token_data[TokenType.SUPER.value] = {}
+
+        if migrated:
+            self._mark_dirty()
 
     async def _save_data(self) -> None:
         """保存Token数据（支持多进程）"""
@@ -164,12 +220,19 @@ class GrokTokenManager:
         if not tokens:
             return
 
+        if self.token_data is None:
+            await self._load_data()
+        else:
+            self._ensure_token_schema()
+
+        token_bucket = self.token_data.setdefault(token_type.value, {})
+
         count = 0
         for token in tokens:
             if not token or not token.strip():
                 continue
 
-            self.token_data[token_type.value][token] = {
+            token_bucket[token] = {
                 "createdTime": int(time.time() * 1000),
                 "remainingQueries": -1,
                 "heavyremainingQueries": -1,
@@ -178,7 +241,7 @@ class GrokTokenManager:
                 "lastFailureTime": None,
                 "lastFailureReason": None,
                 "tags": [],
-                "note": ""
+                "note": "",
             }
             count += 1
 
@@ -227,7 +290,7 @@ class GrokTokenManager:
         # 只在文件模式且多进程环境下才重新加载
         if self._storage:
             return  # 数据库模式不需要
-        
+
         try:
             if self.token_file.exists():
                 with open(self.token_file, "r", encoding="utf-8") as f:
@@ -240,15 +303,23 @@ class GrokTokenManager:
         except Exception as e:
             logger.warning(f"[Token] 重新加载失败: {e}")
 
+        if self.token_data is None:
+            self.token_data = {TokenType.NORMAL.value: {}, TokenType.SUPER.value: {}}
+
+        self._ensure_token_schema()
+
     def get_token(self, model: str) -> str:
         """获取Token"""
         jwt = self.select_token(model)
         return f"sso-rw={jwt};sso={jwt}"
     
     def select_token(self, model: str) -> str:
-        """选择最优Token（多进程安全）"""
+        """选择最优Token（多进程安全，支持冷却）"""
         # 重新加载最新数据（多进程模式）
         self._reload_if_needed()
+
+        current_time = time.time() * 1000
+
         def select_best(tokens: Dict[str, Any], field: str) -> Tuple[Optional[str], Optional[int]]:
             """选择最佳Token"""
             unused, used = [], []
@@ -257,9 +328,18 @@ class GrokTokenManager:
                 # 跳过已失效的token
                 if data.get("status") == "expired":
                     continue
-                
+
                 # 跳过失败次数过多的token（任何错误状态码）
                 if data.get("failedCount", 0) >= MAX_FAILURES:
+                    continue
+
+                # 跳过次数冷却中的token
+                if key in self._cooldown_counts:
+                    continue
+
+                # 跳过时间冷却中的token（429）
+                cooldown_until = data.get("cooldownUntil", 0)
+                if cooldown_until and cooldown_until > current_time:
                     continue
 
                 remaining = int(data.get(field, -1))
@@ -281,7 +361,7 @@ class GrokTokenManager:
         # 快照
         snapshot = {
             TokenType.NORMAL.value: self.token_data[TokenType.NORMAL.value].copy(),
-            TokenType.SUPER.value: self.token_data[TokenType.SUPER.value].copy()
+            TokenType.SUPER.value: self.token_data[TokenType.SUPER.value].copy(),
         }
 
         # 选择策略
@@ -301,9 +381,17 @@ class GrokTokenManager:
                 {
                     "model": model,
                     "normal": len(snapshot[TokenType.NORMAL.value]),
-                    "super": len(snapshot[TokenType.SUPER.value])
-                }
+                    "super": len(snapshot[TokenType.SUPER.value]),
+                    "cooldown_count": len(self._cooldown_counts),
+                },
             )
+
+        # 成功选中后递减次数冷却计数
+        for token in list(self._cooldown_counts.keys()):
+            self._cooldown_counts[token] -= 1
+            if self._cooldown_counts[token] <= 0:
+                del self._cooldown_counts[token]
+                logger.debug(f"[Token] 冷却结束: {token[:10]}...")
 
         status = "未使用" if remaining == -1 else f"剩余{remaining}次"
         logger.debug(f"[Token] 分配Token: {model} ({status})")
@@ -463,6 +551,103 @@ class GrokTokenManager:
 
         except Exception as e:
             logger.error(f"[Token] 记录失败错误: {e}")
+
+    async def apply_cooldown(self, auth_token: str, status_code: int) -> None:
+        """应用冷却策略
+        - 429 错误：使用时间冷却（有额度1小时，无额度10小时）
+        - 其他错误：使用次数冷却（5次请求）
+        """
+        try:
+            sso = self._extract_sso(auth_token)
+            if not sso:
+                return
+
+            _, data = self._find_token(sso)
+            if not data:
+                return
+
+            remaining = data.get("remainingQueries", -1)
+
+            if status_code == 429:
+                if remaining > 0 or remaining == -1:
+                    cooldown_until = time.time() + COOLDOWN_429_WITH_QUOTA
+                    logger.info(f"[Token] 429冷却(有额度): {sso[:10]}... 冷却1小时")
+                else:
+                    cooldown_until = time.time() + COOLDOWN_429_NO_QUOTA
+                    logger.info(f"[Token] 429冷却(无额度): {sso[:10]}... 冷却10小时")
+                data["cooldownUntil"] = int(cooldown_until * 1000)
+                self._mark_dirty()
+            else:
+                if remaining != 0:
+                    self._cooldown_counts[sso] = COOLDOWN_REQUESTS
+                    logger.info(f"[Token] 次数冷却: {sso[:10]}... 冷却{COOLDOWN_REQUESTS}次请求")
+
+        except Exception as e:
+            logger.error(f"[Token] 应用冷却错误: {e}")
+
+    async def refresh_all_limits(self) -> Dict[str, Any]:
+        """刷新所有 Token 的剩余次数"""
+        if self._refresh_lock.locked():
+            return {
+                "error": "refresh_in_progress",
+                "message": "已有刷新任务在进行中",
+                "progress": self._refresh_progress,
+            }
+
+        async with self._refresh_lock:
+            all_tokens = []
+            for token_type in [TokenType.NORMAL.value, TokenType.SUPER.value]:
+                for sso in list(self.token_data[token_type].keys()):
+                    all_tokens.append((token_type, sso))
+
+            total = len(all_tokens)
+            self._refresh_progress = {
+                "running": True,
+                "current": 0,
+                "total": total,
+                "success": 0,
+                "failed": 0,
+            }
+
+            success_count = 0
+            fail_count = 0
+
+            for i, (token_type, sso) in enumerate(all_tokens):
+                auth_token = f"sso-rw={sso};sso={sso}"
+                try:
+                    result = await self.check_limits(auth_token, "grok-4-fast")
+                    if result:
+                        success_count += 1
+                    else:
+                        fail_count += 1
+                except Exception as e:
+                    logger.warning(f"[Token] 刷新失败: {sso[:10]}... - {e}")
+                    fail_count += 1
+
+                self._refresh_progress = {
+                    "running": True,
+                    "current": i + 1,
+                    "total": total,
+                    "success": success_count,
+                    "failed": fail_count,
+                }
+                await asyncio.sleep(0.1)
+
+            logger.info(f"[Token] 批量刷新完成: 成功{success_count}, 失败{fail_count}")
+            self._refresh_progress = {
+                "running": False,
+                "current": total,
+                "total": total,
+                "success": success_count,
+                "failed": fail_count,
+            }
+            return {"success": success_count, "failed": fail_count, "total": total}
+
+    def get_refresh_progress(self) -> Dict[str, Any]:
+        """获取刷新进度"""
+        progress = self._refresh_progress.copy()
+        progress["running"] = self._refresh_lock.locked()
+        return progress
 
     async def reset_failure(self, auth_token: str) -> None:
         """重置失败计数"""

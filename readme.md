@@ -2,6 +2,10 @@
 
 基于 **FastAPI** 重构的 Grok2API，全面适配最新 Web 调用格式，支持流式对话、图像生成、图像编辑、联网搜索、深度思考，号池并发与自动负载均衡一体化。
 
+- **多 Key 管理与持久化**：支持管理员批量创建、备注、删除 API Key，并支持批量启用/禁用。
+- **日志审计支持**：实时记录请求细节，日志数据持久化。
+- **请求统计与持久化**：按小时/天统计请求趋势，包含成功率和模型分布。
+
 
 <br>
 
@@ -133,6 +137,20 @@ volumes:
 | POST  | /api/tokens/note        | 更新 Token 备注     | ✅   |
 | POST  | /api/tokens/test        | 测试 Token 可用性   | ✅   |
 | GET   | /api/tokens/tags/all    | 获取所有标签列表    | ✅   |
+| POST  | /api/tokens/test/batch  | 批量测试 Token 可用性 | ✅   |
+| POST  | /api/tokens/refresh-all | 刷新所有Token剩余次数 | ✅   |
+| GET   | /api/tokens/refresh-progress | 获取刷新进度     | ✅   |
+| GET   | /api/request-stats      | 获取请求统计数据     | ✅   |
+| GET   | /api/keys               | 获取 API Key 列表  | ✅   |
+| POST  | /api/keys/add           | 创建新 API Key     | ✅   |
+| POST  | /api/keys/delete        | 删除 API Key       | ✅   |
+| POST  | /api/keys/status        | 切换 Key 启用状态  | ✅   |
+| POST  | /api/keys/name          | 修改 Key 备注名称  | ✅   |
+| POST  | /api/keys/batch-add     | 批量创建 API Key   | ✅   |
+| POST  | /api/keys/batch-delete  | 批量删除 API Key   | ✅   |
+| POST  | /api/keys/batch-status  | 批量更新 Key 状态  | ✅   |
+| GET   | /api/logs               | 获取请求日志(1000条) | ✅   |
+| POST  | /api/logs/clear         | 清空所有审计日志   | ✅   |
 | GET   | /api/storage/mode       | 获取存储模式信息    | ✅   |
 
 </details>
@@ -172,6 +190,7 @@ volumes:
 | stream_chunk_timeout       | grok    | 否   | 流式分块超时时间(秒)                     | 120    |
 | stream_first_response_timeout | grok | 否   | 流式首次响应超时时间(秒)                 | 30     |
 | stream_total_timeout       | grok    | 否   | 流式总超时时间(秒)                       | 600    |
+| stream_heartbeat_interval  | grok    | 否   | 流式心跳间隔(秒)                         | 15     |
 | cf_clearance               | grok    | 否   | Cloudflare安全令牌                      | ""     |
 | x_statsig_id               | grok    | 是   | 反机器人唯一标识符                      | "ZTpUeXBlRXJyb3I6IENhbm5vdCByZWFkIHByb3BlcnRpZXMgb2YgdW5kZWZpbmVkIChyZWFkaW5nICdjaGlsZE5vZGVzJyk=" |
 | filtered_tags              | grok    | 否   | 过滤响应标签（逗号分隔）                | "xaiartifact,xai:tool_usage_card,grok:render" |

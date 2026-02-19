@@ -7,6 +7,7 @@
   <title>管理控制台 - Grok2API</title>
   <link rel="icon" type="image/png" href="/static/favicon.png">
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     @keyframes slide-up {
       from {
@@ -234,7 +235,7 @@
     <div class="mx-auto flex h-14 max-w-7xl items-center px-6">
       <div class="mr-4 flex items-baseline gap-3">
         <span class="font-bold text-xl">Grok2API</span>
-        <span class="text-xs text-gray-400">by @Chenyme</span>
+        <span class="text-xs text-gray-400">by @Chenyme & @Tomiya233</span>
       </div>
       <div class="flex flex-1 items-center justify-end">
         <div class="flex items-center gap-2">
@@ -254,14 +255,6 @@
             </div>
           </div>
           <nav class="flex items-center gap-1">
-            <a href="https://github.com/chenyme/grok2api/issues" target="_blank"
-              class="inline-flex items-center justify-center text-xs transition-colors hover:bg-accent hover:text-accent-foreground h-7 px-2.5 gap-1">
-              <svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" stroke-width="2">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-              </svg>
-              反馈
-            </a>
             <button onclick="logout()"
               class="inline-flex items-center justify-center text-xs transition-colors hover:bg-accent hover:text-accent-foreground h-7 px-2.5 gap-1">
               <svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -283,6 +276,14 @@
       <nav class="flex space-x-8">
         <button onclick="switchTab('tokens')" id="tabTokens"
           class="tab-btn border-b-2 border-primary text-sm font-medium py-3 px-1">Token 管理</button>
+        <button onclick="switchTab('statistics')" id="tabStatistics"
+          class="tab-btn border-b-2 border-transparent text-sm font-medium py-3 px-1">请求统计</button>
+        <button onclick="switchTab('keys')" id="tabKeys"
+          class="tab-btn border-b-2 border-transparent text-sm font-medium py-3 px-1">Key 管理</button>
+        <button onclick="switchTab('logs')" id="tabLogs"
+          class="tab-btn border-b-2 border-transparent text-sm font-medium py-3 px-1">日志审计</button>
+        <button onclick="switchTab('cache')" id="tabCache"
+          class="tab-btn border-b-2 border-transparent text-sm font-medium py-3 px-1">缓存预览</button>
         <button onclick="switchTab('settings')" id="tabSettings"
           class="tab-btn border-b-2 border-transparent text-sm font-medium py-3 px-1">Setting 配置</button>
       </nav>
@@ -310,6 +311,9 @@
         <div class="rounded-lg border border-border bg-background p-4">
           <p class="text-sm font-medium text-muted-foreground mb-2">Token 限流中</p>
           <h3 class="text-xl font-bold text-orange-600" id="statLimited">-</h3>
+          <p class="text-xs text-muted-foreground mt-2">
+            冷却 <span id="statCooldown">-</span> · 耗尽 <span id="statExhausted">-</span>
+          </p>
         </div>
 
         <div class="rounded-lg border border-border bg-background p-4">
@@ -374,18 +378,24 @@
               <button onclick="toggleBatchTestMenu()" class="btn-icon" title="批量测试">
                 <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
                   stroke="currentColor" stroke-width="2">
-                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                  <polyline points="22 4 12 14.01 9 11.01"/>
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                  <polyline points="22 4 12 14.01 9 11.01" />
                 </svg>
               </button>
-              <div id="batchTestMenu" class="hidden absolute right-0 top-full mt-1 w-40 rounded-md border border-border bg-background shadow-lg z-50">
+              <div id="batchTestMenu"
+                class="hidden absolute right-0 top-full mt-1 w-40 rounded-md border border-border bg-background shadow-lg z-50">
                 <div class="py-1">
-                  <button onclick="batchTestTokens('selected')" class="w-full px-3 py-2 text-left text-sm hover:bg-accent">测试选中</button>
-                  <button onclick="batchTestTokens('all')" class="w-full px-3 py-2 text-left text-sm hover:bg-accent">测试全部</button>
+                  <button onclick="batchTestTokens('selected')"
+                    class="w-full px-3 py-2 text-left text-sm hover:bg-accent">测试选中</button>
+                  <button onclick="batchTestTokens('all')"
+                    class="w-full px-3 py-2 text-left text-sm hover:bg-accent">测试全部</button>
                   <div class="border-t border-border my-1"></div>
-                  <button onclick="batchTestTokens('filter', null, '未使用')" class="w-full px-3 py-2 text-left text-sm hover:bg-accent">测试未使用</button>
-                  <button onclick="batchTestTokens('filter', null, '正常')" class="w-full px-3 py-2 text-left text-sm hover:bg-accent">测试正常</button>
-                  <button onclick="batchTestTokens('filter', null, '限流中')" class="w-full px-3 py-2 text-left text-sm hover:bg-accent">测试限流中</button>
+                  <button onclick="batchTestTokens('filter', null, '未使用')"
+                    class="w-full px-3 py-2 text-left text-sm hover:bg-accent">测试未使用</button>
+                  <button onclick="batchTestTokens('filter', null, '正常')"
+                    class="w-full px-3 py-2 text-left text-sm hover:bg-accent">测试正常</button>
+                  <button onclick="batchTestTokens('filter', null, '限流中')"
+                    class="w-full px-3 py-2 text-left text-sm hover:bg-accent">测试限流中</button>
                 </div>
               </div>
             </div>
@@ -436,6 +446,8 @@
                 <th class="h-10 px-3 text-left align-middle text-sm font-medium text-muted-foreground w-20">状态</th>
                 <th class="h-10 px-3 text-left align-middle text-sm font-medium text-muted-foreground w-20">普通</th>
                 <th class="h-10 px-3 text-left align-middle text-sm font-medium text-muted-foreground w-20">高级</th>
+                <th class="h-10 px-3 text-left align-middle text-sm font-medium text-muted-foreground w-40">限流信息</th>
+                <th class="h-10 px-3 text-left align-middle text-sm font-medium text-muted-foreground w-48">最近失败</th>
                 <th class="h-10 px-3 text-left align-middle text-sm font-medium text-muted-foreground w-32">标签</th>
                 <th class="h-10 px-3 text-left align-middle text-sm font-medium text-muted-foreground w-40">备注</th>
                 <th class="h-10 px-3 text-left align-middle text-sm font-medium text-muted-foreground w-32">创建时间</th>
@@ -457,6 +469,230 @@
             <path d="M9 9h6v6H9z" />
           </svg>
           <p class="text-sm text-muted-foreground">暂无数据</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Key 管理面板 -->
+    <div id="panelKeys" class="hidden">
+      <!-- 工具栏 -->
+      <div class="flex items-center justify-between gap-4 mb-6">
+        <h2 class="text-xl font-bold">Key Management</h2>
+        <div class="flex items-center gap-2">
+          <button onclick="loadKeys()" class="btn-icon" title="刷新列表">
+            <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2">
+              <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+              <path d="M3 3v5h5" />
+              <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+              <path d="M16 21h5v-5" />
+            </svg>
+          </button>
+          <button onclick="openBatchAddModal()"
+            class="inline-flex items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 px-3">
+            <svg class="h-4 w-4 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <line x1="12" y1="8" x2="12" y2="16" />
+              <line x1="8" y1="12" x2="16" y2="12" />
+            </svg>
+            <span class="text-sm font-medium">批量创建</span>
+          </button>
+          <button onclick="openAddKeyModal()"
+            class="inline-flex items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring bg-primary text-primary-foreground hover:bg-primary/90 h-8 px-3">
+            <svg class="h-4 w-4 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            <span class="text-sm font-medium">新增 Key</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 批量操作栏 -->
+      <div id="batchActionBar"
+        class="hidden mb-4 p-3 rounded-lg bg-primary/5 border border-primary/20 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <span class="text-sm font-medium text-primary"><span id="selectedCount">0</span> 个项目被选中</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="selectAllKeysGlobal()"
+            class="text-xs px-2 py-1 rounded bg-background border border-border hover:bg-accent transition-colors">全选全部</button>
+          <button onclick="clearSelectedKeys()"
+            class="text-xs px-2 py-1 rounded bg-background border border-border hover:bg-accent transition-colors">清空选择</button>
+          <button onclick="batchUpdateStatus(true)"
+            class="text-xs px-2 py-1 rounded bg-background border border-border hover:bg-accent transition-colors">批量启用</button>
+          <button onclick="batchUpdateStatus(false)"
+            class="text-xs px-2 py-1 rounded bg-background border border-border hover:bg-accent transition-colors">批量禁用</button>
+          <button onclick="batchDeleteKeys()"
+            class="text-xs px-2 py-1 rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors">批量删除</button>
+        </div>
+      </div>
+
+      <!-- Key 表格 -->
+      <div class="rounded-lg border border-border bg-background">
+        <div class="relative w-full overflow-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="h-10 px-4 text-left align-middle font-medium w-12">
+                  <input type="checkbox" id="selectAllKeys" onchange="toggleSelectAllKeys(this)"
+                    class="rounded border-border text-primary focus:ring-primary h-4 w-4">
+                </th>
+                <th class="h-10 px-4 text-left align-middle font-medium w-48">备注</th>
+                <th class="h-10 px-4 text-left align-middle font-medium w-64">Key</th>
+                <th class="h-10 px-4 text-left align-middle font-medium w-32">创建时间</th>
+                <th class="h-10 px-4 text-left align-middle font-medium w-24">状态</th>
+                <th class="h-10 px-4 text-right align-middle font-medium w-48">操作</th>
+              </tr>
+            </thead>
+            <tbody id="keyTableBody" class="divide-y divide-border">
+              <!-- JS填充 -->
+            </tbody>
+          </table>
+        </div>
+        <div id="keyEmptyState" class="hidden flex flex-col items-center justify-center py-12">
+          <p class="text-sm text-muted-foreground">暂无 API Key</p>
+        </div>
+        <!-- 分页控制 -->
+        <div id="keyPagination" class="hidden flex items-center justify-between px-4 py-3 border-t border-border bg-muted/20">
+          <div class="text-xs text-muted-foreground">
+            共 <span id="keyTotalCount">0</span> 个 Key
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="changeKeyPage(-1)" id="keyPrevBtn"
+              class="inline-flex items-center justify-center rounded-md text-xs font-medium h-8 w-8 border border-input bg-background hover:bg-accent disabled:opacity-50 transition-colors">
+              <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+            </button>
+            <span class="text-xs font-medium px-2">第 <span id="keyCurrentPage">1</span> / <span id="keyMaxPage">1</span>
+              页</span>
+            <button onclick="changeKeyPage(1)" id="keyNextBtn"
+              class="inline-flex items-center justify-center rounded-md text-xs font-medium h-8 w-8 border border-input bg-background hover:bg-accent disabled:opacity-50 transition-colors">
+              <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2">
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div id="globalKeyAlert" class="mt-4 p-4 rounded-lg bg-orange-50 border border-orange-200 hidden">
+        <div class="flex items-start gap-3">
+          <svg class="h-5 w-5 text-orange-600 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+            <line x1="12" y1="9" x2="12" y2="13" />
+            <line x1="12" y1="17" x2="12.01" y2="17" />
+          </svg>
+          <div>
+            <h4 class="text-sm font-bold text-orange-800">存在全局 Key</h4>
+            <p class="text-sm text-orange-700 mt-1">
+              系统检测到 `setting.toml` 中配置了旧的全局 `api_key`。
+              它被视为 "默认管理员" Key，此处无法修改或删除。如果希望完全使用多 Key 管理，请清空配置文件中的 api_key。
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 日志审计面板 -->
+    <div id="panelLogs" class="hidden">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-xl font-bold">日志审计</h2>
+        <div class="flex items-center gap-2">
+          <button onclick="loadLogs()" class="btn-icon" title="刷新日志">
+            <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2">
+              <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+              <path d="M3 3v5h5" />
+              <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+              <path d="M16 21h5v-5" />
+            </svg>
+          </button>
+          <button onclick="clearLogs()"
+            class="inline-flex items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring bg-destructive text-destructive-foreground hover:bg-destructive/90 h-8 px-3">
+            <span class="text-sm font-medium">清空日志</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="rounded-lg border border-border bg-background">
+        <div class="relative w-full overflow-auto" style="max-height: 800px;">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border sticky top-0 bg-background z-10">
+                <th class="h-10 px-4 text-left align-middle font-medium w-40">时间</th>
+                <th class="h-10 px-4 text-left align-middle font-medium w-32">Key 名称</th>
+                <th class="h-10 px-4 text-left align-middle font-medium w-40">模型</th>
+                <th class="h-10 px-4 text-left align-middle font-medium w-32">IP</th>
+                <th class="h-10 px-4 text-left align-middle font-medium w-24">耗时</th>
+                <th class="h-10 px-4 text-left align-middle font-medium w-24">状态</th>
+                <th class="h-10 px-4 text-left align-middle font-medium">详情</th>
+              </tr>
+            </thead>
+            <tbody id="logTableBody" class="divide-y divide-border">
+              <!-- JS填充 -->
+            </tbody>
+          </table>
+        </div>
+        <div id="logEmptyState" class="hidden flex flex-col items-center justify-center py-12">
+          <p class="text-sm text-muted-foreground">暂无日志</p>
+        </div>
+        <!-- 分页控制 -->
+        <div id="logPagination" class="flex items-center justify-between px-4 py-3 border-t border-border bg-muted/20">
+          <div class="text-xs text-muted-foreground">
+            共 <span id="logTotalCount">0</span> 条日志
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="changeLogPage(-1)" id="logPrevBtn"
+              class="inline-flex items-center justify-center rounded-md text-xs font-medium h-8 w-8 border border-input bg-background hover:bg-accent disabled:opacity-50 transition-colors">
+              <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+            </button>
+            <span class="text-xs font-medium px-2">第 <span id="logCurrentPage">1</span> / <span id="logMaxPage">1</span>
+              页</span>
+            <button onclick="changeLogPage(1)" id="logNextBtn"
+              class="inline-flex items-center justify-center rounded-md text-xs font-medium h-8 w-8 border border-input bg-background hover:bg-accent disabled:opacity-50 transition-colors">
+              <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2">
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 缓存预览面板 -->
+    <div id="panelCache" class="hidden">
+      <div class="rounded-lg border border-border bg-background p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-sm font-semibold">缓存预览</h3>
+          <div class="flex items-center gap-2">
+            <div class="inline-flex rounded-md border border-input overflow-hidden">
+              <button id="cacheTabImage" onclick="switchCachePreviewType('image')"
+                class="px-3 h-8 text-xs font-medium bg-primary text-primary-foreground">图片</button>
+              <button id="cacheTabVideo" onclick="switchCachePreviewType('video')"
+                class="px-3 h-8 text-xs font-medium bg-muted text-muted-foreground">视频</button>
+            </div>
+            <button onclick="refreshCachePreview()"
+              class="inline-flex items-center justify-center rounded-md text-xs font-medium border border-input bg-background hover:bg-accent h-8 px-3 transition-colors">刷新</button>
+          </div>
+        </div>
+        <div id="cachePreviewMeta" class="text-xs text-muted-foreground mb-3">图片缓存：0 个</div>
+        <div id="cachePreviewGrid" class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
+          <div class="col-span-full text-sm text-muted-foreground text-center py-6">暂无缓存文件</div>
+        </div>
+        <div class="mt-3 flex items-center justify-center">
+          <button id="cacheLoadMoreBtn" onclick="loadMoreCachePreview()"
+            class="inline-flex items-center justify-center rounded-md text-xs font-medium border border-input bg-background hover:bg-accent h-8 px-4 transition-colors">加载更多</button>
         </div>
       </div>
     </div>
@@ -590,6 +826,7 @@
               </div>
             </div>
           </div>
+
         </div>
       </div>
 
@@ -763,6 +1000,45 @@
         </div>
       </div>
     </div>
+
+    <!-- 统计面板 -->
+    <div id="panelStatistics" class="hidden">
+      <!-- 概览卡片 -->
+      <div class="grid gap-4 grid-cols-2 md:grid-cols-4 mb-6">
+        <div class="rounded-lg border border-border bg-background p-4">
+          <p class="text-sm font-medium text-muted-foreground mb-2">总请求数</p>
+          <h3 class="text-xl font-bold" id="reqStatTotal">-</h3>
+        </div>
+        <div class="rounded-lg border border-border bg-background p-4">
+          <p class="text-sm font-medium text-muted-foreground mb-2">成功请求</p>
+          <h3 class="text-xl font-bold text-green-600" id="reqStatSuccess">-</h3>
+        </div>
+        <div class="rounded-lg border border-border bg-background p-4">
+          <p class="text-sm font-medium text-muted-foreground mb-2">失败请求</p>
+          <h3 class="text-xl font-bold text-destructive" id="reqStatFailed">-</h3>
+        </div>
+        <div class="rounded-lg border border-border bg-background p-4">
+          <p class="text-sm font-medium text-muted-foreground mb-2">成功率</p>
+          <h3 class="text-xl font-bold text-blue-600" id="reqStatRate">-</h3>
+        </div>
+      </div>
+
+      <!-- 图表容器 -->
+      <div class="grid gap-6 lg:grid-cols-2 mb-6">
+        <div class="rounded-lg border border-border bg-background p-6">
+          <h3 class="text-sm font-semibold mb-4">24小时请求趋势</h3>
+          <canvas id="hourlyChart" height="200"></canvas>
+        </div>
+        <div class="rounded-lg border border-border bg-background p-6">
+          <h3 class="text-sm font-semibold mb-4">7天请求统计</h3>
+          <canvas id="dailyChart" height="200"></canvas>
+        </div>
+        <div class="rounded-lg border border-border bg-background p-6">
+          <h3 class="text-sm font-semibold mb-4">模型调用分布</h3>
+          <canvas id="modelsChart" height="200"></canvas>
+        </div>
+      </div>
+    </div>
   </main>
 
   <!-- 编辑信息模态框 -->
@@ -852,64 +1128,570 @@
     </div>
   </div>
 
+  <!-- 新增 Key 模态框 -->
+  <div id="modalAddKey" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+    <div class="bg-background rounded-lg border border-border w-full max-w-md shadow-xl">
+      <div class="flex items-center justify-between p-5 border-b border-border">
+        <h3 class="text-lg font-semibold">新增 API Key</h3>
+        <button onclick="closeAddKeyModal()" class="text-muted-foreground hover:text-foreground transition-colors">
+          <svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+      <div class="p-5 space-y-4">
+        <div class="space-y-2">
+          <label class="text-sm font-medium text-muted-foreground">备注名称</label>
+          <input type="text" id="newKeyName" placeholder="例如: 某某应用使用"
+            class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
+        </div>
+      </div>
+      <div class="flex items-center justify-end gap-3 p-5 border-t border-border bg-muted/30">
+        <button onclick="closeAddKeyModal()"
+          class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors border border-input bg-background hover:bg-accent h-9 px-5">取消</button>
+        <button onclick="doAddKey()"
+          class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-5">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 批量创建 Key 模态框 -->
+  <div id="modalBatchAddKey" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+    <div class="bg-background rounded-lg border border-border w-full max-w-md shadow-xl">
+      <div class="flex items-center justify-between p-5 border-b border-border">
+        <h3 class="text-lg font-semibold">批量创建 API Key</h3>
+        <button onclick="closeBatchAddModal()" class="text-muted-foreground hover:text-foreground transition-colors">
+          <svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+      <div class="p-5 space-y-4">
+        <div class="space-y-2">
+          <label class="text-sm font-medium text-muted-foreground">名称前缀</label>
+          <input type="text" id="batchKeyPrefix" placeholder="例如: 测试用户"
+            class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
+        </div>
+        <div class="space-y-2">
+          <label class="text-sm font-medium text-muted-foreground">创建数量 (1-50)</label>
+          <input type="number" id="batchKeyCount" value="10" min="1" max="50"
+            class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
+        </div>
+      </div>
+      <div class="flex items-center justify-end gap-3 p-5 border-t border-border bg-muted/30">
+        <button onclick="closeBatchAddModal()"
+          class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors border border-input bg-background hover:bg-accent h-9 px-5">取消</button>
+        <button onclick="doBatchAddKeys()"
+          class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-5">确认创建</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 批量创建结果模态框 -->
+  <div id="modalBatchResult" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+    <div class="bg-background rounded-lg border border-border w-full max-w-2xl shadow-xl">
+      <div class="flex items-center justify-between p-5 border-b border-border">
+        <h3 class="text-lg font-semibold">创建成功</h3>
+        <button onclick="copyBatchResults()" class="text-sm text-primary hover:underline font-medium">点击复制全部</button>
+      </div>
+      <div class="p-5">
+        <div class="bg-muted p-4 rounded-md border border-border">
+          <textarea id="batchResultContent" readonly
+            class="w-full h-80 bg-transparent border-none focus:ring-0 text-xs font-mono resize-none"></textarea>
+        </div>
+      </div>
+      <div class="flex items-center justify-end p-5 border-t border-border bg-muted/30">
+        <button onclick="closeBatchResultModal()"
+          class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-5">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 缓存预览模态框 -->
+  <div id="cacheViewerModal" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+    <div class="bg-background rounded-lg border border-border w-full max-w-5xl shadow-xl overflow-hidden">
+      <div class="flex items-center justify-between p-4 border-b border-border">
+        <div class="min-w-0">
+          <h3 id="cacheViewerTitle" class="text-sm font-semibold truncate">缓存预览</h3>
+          <div id="cacheViewerMeta" class="text-xs text-muted-foreground"></div>
+        </div>
+        <button onclick="closeCacheViewer()"
+          class="inline-flex items-center justify-center rounded-md text-xs font-medium border border-input bg-background hover:bg-accent h-8 px-3 transition-colors">关闭</button>
+      </div>
+      <div id="cacheViewerBody" class="bg-black flex items-center justify-center p-4"></div>
+    </div>
+  </div>
+
   <script>
     let allTokens = [], filteredTokens = [], selectedTokens = new Set(), allTagsList = [];
-    const $ = (id) => document.getElementById(id),
-      checkAuth = () => { const t = localStorage.getItem('adminToken'); return t || (location.href = '/login', null), t },
-      apiRequest = async (url, opts = {}) => { const t = checkAuth(); if (!t) return null; const r = await fetch(url, { ...opts, headers: { ...opts.headers, Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' } }); return r.status === 401 ? (localStorage.removeItem('adminToken'), location.href = '/login', null) : r },
-      loadStats = async () => { try { const r = await apiRequest('/api/stats'); if (!r) return; const d = await r.json(); if (d.success) { const s = d.data; $('statTotal').textContent = s.total || 0;['Unused', 'Limited', 'Expired', 'Active'].forEach((k, i) => $(`stat${k}`).textContent = (s.normal?.[k.toLowerCase()] || 0) + (s.super?.[k.toLowerCase()] || 0)) } } catch (e) { console.error('加载统计失败:', e) } },
-      calcRemaining = () => { let n = 0, h = 0; allTokens.forEach(t => { if (t.remaining_queries > 0) n += t.remaining_queries; if (t.heavy_remaining_queries > 0) h += t.heavy_remaining_queries }); return { normal: n, heavy: h, total: n + h } },
-      loadTokens = async () => { try { const r = await apiRequest('/api/tokens'); if (!r) return; const d = await r.json(); d.success && (allTokens = d.data.map(t => ({ ...t, tags: t.tags || [], note: t.note || '' })), filteredTokens = allTokens, selectedTokens.clear(), renderTokens(), updateRemaining(), await loadAllTags()) } catch (e) { console.error('加载列表失败:', e) } },
-      updateRemaining = () => { const r = calcRemaining(); const chatTotal = r.total; const imageTotal = Math.floor(chatTotal / 2); $('statChatRemaining').textContent = chatTotal === 0 ? '-' : chatTotal.toLocaleString(); $('statImageRemaining').textContent = imageTotal === 0 ? '-' : imageTotal.toLocaleString(); $('statVideoRemaining').textContent = '无法统计' }
+    let allLogsData = [], currentLogPage = 1, logsPerPage = 20;
+    let allKeysData = [], currentKeyPage = 1, keysPerPage = 20;
+    const selectedKeys = new Set();
+    const $ = (id) => document.getElementById(id);
 
-    const renderTokens = () => { const tb = $('tokenTableBody'), es = $('emptyState'), ss = { '未使用': 'bg-muted text-muted-foreground', '限流中': 'bg-orange-50 text-orange-700 border-orange-200', '失效': 'bg-destructive/10 text-destructive border-destructive/20', '正常': 'bg-green-50 text-green-700 border-green-200' }, ts = { sso: 'bg-blue-50 text-blue-700 border-blue-200', ssoSuper: 'bg-purple-50 text-purple-700 border-purple-200' }, tl = { sso: 'SSO', ssoSuper: 'SuperSSO' }; if (!filteredTokens.length) { tb.innerHTML = ''; es.classList.remove('hidden'); $('selectAll').checked = false; return updateBatchActions() } es.classList.add('hidden'); tb.innerHTML = filteredTokens.map(t => { const tagsHtml = t.tags && t.tags.length ? t.tags.map(tag => `<span class="inline-flex items-center rounded px-1.5 py-0.5 text-xs bg-gray-100 text-gray-700">${tag}</span>`).join(' ') : '<span class="text-xs text-muted-foreground">-</span>'; const noteHtml = t.note && t.note.length ? `<span class="text-xs text-gray-700" title="${t.note}">${t.note.length > 20 ? t.note.substring(0, 20) + '...' : t.note}</span>` : '<span class="text-xs text-muted-foreground">-</span>'; const escapedToken = t.token.replace(/"/g, '&quot;'); return `<tr class="transition-colors"><td class="py-2.5 px-3 align-middle w-12"><input type="checkbox" class="token-checkbox h-3.5 w-3.5 rounded border border-input focus:ring-1 focus:ring-ring" data-token="${escapedToken}" data-type="${t.token_type}" ${selectedTokens.has(t.token) ? 'checked' : ''} onchange="toggleToken('${t.token}')"></td><td class="py-2.5 px-3 align-middle w-80"><div class="flex items-center gap-2"><span class="font-mono text-xs">${t.token.substring(0, 30)}...</span><button onclick="copyToken(event)" data-token="${escapedToken}" class="inline-flex items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring hover:bg-accent h-6 w-6" title="复制完整 Token"><svg class="h-3 w-3 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div></td><td class="py-2.5 px-3 align-middle w-20"><span class="inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium border ${ts[t.token_type]}">${tl[t.token_type]}</span></td><td class="py-2.5 px-3 align-middle w-20"><span class="inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium border ${ss[t.status]}">${t.status}</span></td><td class="py-2.5 px-3 align-middle w-20 text-xs tabular-nums">${t.remaining_queries === -1 ? '-' : t.remaining_queries}</td><td class="py-2.5 px-3 align-middle w-20 text-xs tabular-nums">${t.heavy_remaining_queries === -1 ? '-' : t.heavy_remaining_queries}</td><td class="py-2.5 px-3 align-middle w-32"><div class="flex flex-wrap gap-1">${tagsHtml}</div></td><td class="py-2.5 px-3 align-middle w-40">${noteHtml}</td><td class="py-2.5 px-3 align-middle w-32 text-xs text-muted-foreground">${t.created_time ? new Date(t.created_time).toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' }) : '-'}</td><td class="py-2.5 px-3 align-middle text-right w-28 sticky-right"><div class="flex items-center justify-end gap-1"><button onclick="testToken('${t.token}','${t.token_type}')" class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring hover:bg-blue-50 hover:text-blue-700 h-7 w-7" title="测试Token"><svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></button><button onclick="editToken('${t.token}','${t.token_type}')" class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring hover:bg-accent hover:text-accent-foreground h-7 w-7" title="编辑信息"><svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button><button onclick="deleteToken('${t.token}','${t.token_type}')" class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring hover:bg-destructive/10 hover:text-destructive h-7 w-7" title="删除"><svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></div></td></tr>` }).join(''); updateBatchActions() },
-      toggleToken = t => selectedTokens[selectedTokens.has(t) ? 'delete' : 'add'](t) || updateBatchActions(),
-      toggleSelectAll = () => { const sa = $('selectAll'); sa.checked ? filteredTokens.forEach(t => selectedTokens.add(t.token)) : selectedTokens.clear(); renderTokens() },
-      updateBatchActions = () => { const ba = $('batchActions'), sc = $('selectedCount'), c = selectedTokens.size; ba.classList[c > 0 ? 'add' : 'remove']('flex'); ba.classList[c > 0 ? 'remove' : 'add']('hidden'); c > 0 && (sc.textContent = `已选择 ${c} 项`); $('selectAll').checked = filteredTokens.length > 0 && c === filteredTokens.length },
-      filterTokens = () => { const tf = $('filterType').value, sf = $('filterStatus').value, tagf = $('filterTag').value; filteredTokens = allTokens.filter(t => (tf === 'all' || t.token_type === tf) && (sf === 'all' || t.status === sf) && (tagf === 'all' || t.tags && t.tags.includes(tagf))); selectedTokens.clear(); renderTokens() },
-      loadAllTags = async () => { try { const r = await apiRequest('/api/tokens/tags/all'); if (!r) return; const d = await r.json(); if (d.success) { allTagsList = d.data; const tagFilter = $('filterTag'); const currentValue = tagFilter.value; tagFilter.innerHTML = '<option value="all">全部标签</option>' + allTagsList.map(tag => `<option value="${tag}">${tag}</option>`).join(''); tagFilter.value = currentValue } } catch (e) { console.error('加载标签列表失败:', e) } },
-      refreshTokens = async () => { await loadTokens(); await loadStats() },
-      openAddModal = () => $('addModal').classList.remove('hidden'),
-      closeAddModal = () => { $('addModal').classList.add('hidden'); $('addTokenList').value = '' },
-      deleteToken = async (t, tt) => { if (!confirm('确定要删除这个 Token 吗?')) return; try { const r = await apiRequest('/api/tokens/delete', { method: 'POST', body: JSON.stringify({ tokens: [t], token_type: tt }) }); if (!r) return; const d = await r.json(); d.success ? await refreshTokens() : showToast('删除失败: ' + (d.error || '未知错误'), 'error') } catch (e) { showToast('删除失败: ' + e.message, 'error') } },
-      batchDelete = async () => { if (!selectedTokens.size || !confirm(`确定要删除选中的 ${selectedTokens.size} 个 Token 吗?此操作不可恢复!`)) return; const tbt = { sso: [], ssoSuper: [] }; document.querySelectorAll('.token-checkbox:checked').forEach(cb => tbt[cb.dataset.type].push(cb.dataset.token)); try { const ps = [];['sso', 'ssoSuper'].forEach(k => tbt[k].length && ps.push(apiRequest('/api/tokens/delete', { method: 'POST', body: JSON.stringify({ tokens: tbt[k], token_type: k }) }))); await Promise.all(ps); await refreshTokens() } catch (e) { showToast('批量删除失败: ' + e.message, 'error') } },
-      submitAddTokens = async () => { const tt = $('addTokenType').value, tks = $('addTokenList').value.split('\n').map(t => t.trim()).filter(t => t); if (!tks.length) return showToast('请输入至少一个 Token', 'error'); try { const r = await apiRequest('/api/tokens/add', { method: 'POST', body: JSON.stringify({ tokens: tks, token_type: tt }) }); if (!r) return; const d = await r.json(); d.success ? (closeAddModal(), await refreshTokens()) : showToast('添加失败: ' + (d.error || '未知错误'), 'error') } catch (e) { showToast('添加失败: ' + e.message, 'error') } },
-      copyToken = async (e) => {
-        e.stopPropagation();
-        const token = e.currentTarget.dataset.token;
-        try {
-          await navigator.clipboard.writeText(token);
-          showToast('Token 已复制到剪贴板', 'success')
-        } catch (err) {
-          // 降级方案：使用 textarea
-          const textarea = document.createElement('textarea');
-          textarea.value = token;
-          textarea.style.position = 'fixed';
-          textarea.style.opacity = '0';
-          document.body.appendChild(textarea);
-          textarea.select();
-          try {
-            document.execCommand('copy');
-            showToast('Token 已复制到剪贴板', 'success');
-          } catch (e2) {
-            console.error('复制失败:', e2);
-            showToast('复制失败,请手动复制', 'error');
-          }
-          document.body.removeChild(textarea);
+    const apiRequest = async (u, o = {}) => {
+      const t = localStorage.getItem('adminToken');
+      if (!t && !u.includes('/login')) return window.location.href = '/login';
+      if (t) o.headers = { ...o.headers, 'Authorization': `Bearer ${t}`, 'Content-Type': 'application/json' };
+      const r = await fetch(u, o);
+      if (r.status === 401 && !u.includes('/login')) return localStorage.removeItem('adminToken'), window.location.href = '/login';
+      return r;
+    };
+
+    const showToast = (m, t = 'success') => {
+      const d = document.createElement('div');
+      d.className = `fixed top-4 right-4 p-4 rounded-md shadow-lg text-white text-sm z-[9999] transition-all duration-300 transform translate-x-full ${t === 'success' ? 'bg-green-600' : 'bg-red-600'}`;
+      d.textContent = m;
+      document.body.appendChild(d);
+      requestAnimationFrame(() => d.classList.remove('translate-x-full'));
+      setTimeout(() => { d.classList.add('translate-x-full'); setTimeout(() => d.remove(), 300) }, 3000);
+    };
+
+    const logout = () => { localStorage.removeItem('adminToken'); window.location.href = '/login' };
+
+    const switchTab = (target) => {
+      ['tokens', 'statistics', 'keys', 'logs', 'cache', 'settings'].forEach(name => {
+        const cap = name.charAt(0).toUpperCase() + name.slice(1);
+        const active = name === target;
+        const panel = $(`panel${cap}`);
+        const tab = $(`tab${cap}`);
+
+        if (panel) panel.classList.toggle('hidden', !active);
+        if (tab) {
+          tab.classList.toggle('border-primary', active);
+          tab.classList.toggle('text-primary', active);
+          tab.classList.toggle('border-transparent', !active);
+          tab.classList.toggle('text-muted-foreground', !active);
         }
+      });
+
+      if (target === 'settings') loadSettings();
+      if (target === 'cache') loadCachePreview(true);
+      if (target === 'statistics') loadRequestStats();
+      if (target === 'keys') loadKeys();
+      if (target === 'logs') loadLogs();
+    };
+
+    // --- Key 管理 ---
+
+    const formatDate = (ts) => {
+      if (!ts) return '-';
+      return new Date(ts * 1000).toLocaleString();
+    };
+
+    const loadKeys = async () => {
+      try {
+        const r = await apiRequest('/api/keys');
+        const d = await r.json();
+        if (d.success) {
+          // 重置选择
+          selectedKeys.clear();
+          $('selectAllKeys').checked = false;
+          updateBatchActionBar();
+          allKeysData = Array.isArray(d.data) ? d.data : [];
+          currentKeyPage = 1;
+          renderKeys();
+        }
+      } catch (e) { console.error(e); showToast('加载Keys失败', 'error') }
+    };
+
+    const renderKeys = () => {
+      const tbody = $('keyTableBody');
+      tbody.innerHTML = '';
+      const total = allKeysData.length;
+      $('keyEmptyState').classList.toggle('hidden', total > 0);
+      $('keyPagination').classList.toggle('hidden', total === 0);
+
+      const maxPage = Math.max(1, Math.ceil(total / keysPerPage));
+      if (currentKeyPage > maxPage) currentKeyPage = maxPage;
+
+      $('keyTotalCount').textContent = total;
+      $('keyCurrentPage').textContent = currentKeyPage;
+      $('keyMaxPage').textContent = maxPage;
+      $('keyPrevBtn').disabled = currentKeyPage <= 1;
+      $('keyNextBtn').disabled = currentKeyPage >= maxPage;
+
+      const start = (currentKeyPage - 1) * keysPerPage;
+      const end = start + keysPerPage;
+      const pageData = allKeysData.slice(start, end);
+
+      pageData.forEach(k => {
+        const tr = document.createElement('tr');
+        tr.className = 'border-b border-border hover:bg-muted/50 transition-colors';
+        tr.innerHTML = `
+                        <td class="p-4 align-middle">
+                            <input type="checkbox" data-key="${k.key}" onchange="toggleKeySelection(this)" class="key-checkbox rounded border-border text-primary focus:ring-primary h-4 w-4" ${selectedKeys.has(k.key) ? 'checked' : ''}>
+                        </td>
+                        <td class="p-4 align-middle">
+                            <span class="font-medium">${k.name || '-'}</span>
+                            <button onclick="editKeyName('${k.key}', '${k.name}')" class="ml-2 text-xs text-muted-foreground hover:text-primary">
+                                <svg class="h-3 w-3 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+                            </button>
+                        </td>
+                        <td class="p-4 align-middle font-mono text-xs text-muted-foreground">${k.display_key}</td>
+                        <td class="p-4 align-middle text-muted-foreground">${formatDate(k.created_at)}</td>
+                        <td class="p-4 align-middle">
+                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${k.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">
+                                ${k.is_active ? '启用' : '禁用'}
+                            </span>
+                        </td>
+                        <td class="p-4 align-middle text-right text-xs">
+                             <button onclick="copyToClipboard('${k.key}')" class="btn-icon text-muted-foreground hover:text-primary mr-2" title="复制完整Key">
+                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                            </button>
+                            <button onclick="toggleKeyStatus('${k.key}', ${!k.is_active})" class="btn-icon text-muted-foreground hover:text-primary mr-2" title="${k.is_active ? '禁用' : '启用'}">
+                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
+                            </button>
+                            <button onclick="deleteKey('${k.key}')" class="btn-icon text-muted-foreground hover:text-destructive" title="删除">
+                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                            </button>
+                        </td>
+                    `;
+        tbody.appendChild(tr);
+      });
+
+      updateKeySelectAllState();
+      updateBatchActionBar();
+    };
+
+    const changeKeyPage = (delta) => {
+      const total = allKeysData.length;
+      const maxPage = Math.max(1, Math.ceil(total / keysPerPage));
+      currentKeyPage = Math.min(maxPage, Math.max(1, currentKeyPage + delta));
+      renderKeys();
+      const container = $('keyTableBody').closest('.overflow-auto');
+      if (container) container.scrollTop = 0;
+    };
+
+    const updateKeySelectAllState = () => {
+      const boxes = document.querySelectorAll('.key-checkbox');
+      const selectAll = $('selectAllKeys');
+      if (!boxes.length) {
+        selectAll.checked = false;
+        selectAll.indeterminate = false;
+        return;
       }
+      const checkedCount = Array.from(boxes).filter(cb => cb.checked).length;
+      selectAll.checked = checkedCount === boxes.length;
+      selectAll.indeterminate = checkedCount > 0 && checkedCount < boxes.length;
+    };
 
-    let currentEditToken = '', currentEditTokenType = '';
-    editToken = (token, tokenType) => { currentEditToken = token; currentEditTokenType = tokenType; const tokenData = allTokens.find(t => t.token === token); const currentTags = tokenData?.tags || []; const currentNote = tokenData?.note || ''; $('editTokenInput').value = token.substring(0, 50) + '...'; $('editTagsInput').value = currentTags.join(', '); $('editNoteInput').value = currentNote; const suggestedContainer = $('suggestedTags'); suggestedContainer.innerHTML = ''; if (allTagsList.length > 0) { suggestedContainer.innerHTML = '<div class="text-xs text-muted-foreground mb-1">常用标签:</div>' + allTagsList.map(tag => `<button onclick="addTagToInput('${tag}')" class="inline-flex items-center rounded px-2 py-1 text-xs bg-muted hover:bg-accent transition-colors">${tag}</button>`).join('') } $('editTagsModal').classList.remove('hidden') },
-      closeEditModal = () => { $('editTagsModal').classList.add('hidden'); currentEditToken = ''; currentEditTokenType = '' },
-      addTagToInput = (tag) => { const input = $('editTagsInput'); const currentValue = input.value.trim(); const tags = currentValue ? currentValue.split(',').map(t => t.trim()) : []; if (!tags.includes(tag)) { tags.push(tag); input.value = tags.join(', ') } },
-      submitEditInfo = async () => { if (!currentEditToken) return; const tagsInput = $('editTagsInput').value; const note = $('editNoteInput').value.trim(); const tags = tagsInput.split(',').map(t => t.trim()).filter(t => t); const promises = []; promises.push(apiRequest('/api/tokens/tags', { method: 'POST', body: JSON.stringify({ token: currentEditToken, token_type: currentEditTokenType, tags }) })); promises.push(apiRequest('/api/tokens/note', { method: 'POST', body: JSON.stringify({ token: currentEditToken, token_type: currentEditTokenType, note }) })); try { const results = await Promise.all(promises); const allSuccess = results.every(r => r && r.ok); if (allSuccess) { closeEditModal(); await refreshTokens(); showToast('信息更新成功', 'success') } else { showToast('部分更新失败，请重试', 'error') } } catch (e) { showToast('更新失败: ' + e.message, 'error') } }
+    const openAddKeyModal = () => $('modalAddKey').classList.remove('hidden');
+    const closeAddKeyModal = () => { $('modalAddKey').classList.add('hidden'); $('newKeyName').value = '' };
 
-    testToken = async (token, tokenType) => { const btn = event.target.closest('button'); const originalHtml = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<svg class="h-3.5 w-3.5 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>'; try { const r = await apiRequest('/api/tokens/test', { method: 'POST', body: JSON.stringify({ token, token_type: tokenType }) }); if (!r) return; const d = await r.json(); if (d.success && d.data.valid) { showToast(`Token有效！剩余: ${d.data.remaining_queries === -1 ? '无限制' : d.data.remaining_queries}次`, 'success'); await refreshTokens() } else { const errMsgs = { expired: 'Token已失效 (401错误)', blocked: '服务器被block，请稍后再试或更换IP', limited: 'Token已被限流' }; showToast(errMsgs[d.data?.error_type] || 'Token无效或已失效', 'error') } } catch (e) { showToast('测试失败: ' + e.message, 'error') } finally { btn.disabled = false; btn.innerHTML = originalHtml } }
+    const doAddKey = async () => {
+      const name = $('newKeyName').value.trim();
+      if (!name) return showToast('请输入备注名称', 'error');
+      try {
+        const r = await apiRequest('/api/keys/add', { method: 'POST', body: JSON.stringify({ name }) });
+        const d = await r.json();
+        if (d.success) {
+          closeAddKeyModal();
+          showToast('Key创建成功');
+          loadKeys();
+          // 单个创建也弹窗显示一下方便复制
+          $('batchResultContent').value = d.data.key;
+          $('modalBatchResult').classList.remove('hidden');
+        } else throw new Error(d.error);
+      } catch (e) { showToast('创建失败: ' + e.message, 'error') }
+    };
 
-    // 批量测试相关函数
-    toggleBatchTestMenu = () => { const menu = $('batchTestMenu'); menu.classList.toggle('hidden') }
-    document.addEventListener('click', (e) => { const dropdown = $('batchTestDropdown'); if (dropdown && !dropdown.contains(e.target)) { $('batchTestMenu').classList.add('hidden') } })
+    const openBatchAddModal = () => $('modalBatchAddKey').classList.remove('hidden');
+    const closeBatchAddModal = () => { $('modalBatchAddKey').classList.add('hidden'); $('batchKeyPrefix').value = ''; $('batchKeyCount').value = 10 };
+
+    const doBatchAddKeys = async () => {
+      const prefix = $('batchKeyPrefix').value.trim();
+      const count = parseInt($('batchKeyCount').value);
+      if (!prefix) return showToast('请输入名称前缀', 'error');
+      if (isNaN(count) || count < 1 || count > 50) return showToast('创建数量需在 1-50 之间', 'error');
+
+      try {
+        const r = await apiRequest('/api/keys/batch-add', { method: 'POST', body: JSON.stringify({ name_prefix: prefix, count }) });
+        const d = await r.json();
+        if (d.success) {
+          closeBatchAddModal();
+          showToast(`成功创建 ${d.data.length} 个 Key`);
+          loadKeys();
+          // 显示结果
+          $('batchResultContent').value = d.data.map(k => k.key).join('\n');
+          $('modalBatchResult').classList.remove('hidden');
+        } else throw new Error(d.error);
+      } catch (e) { showToast('批量创建失败: ' + e.message, 'error') }
+    };
+
+    const closeBatchResultModal = () => $('modalBatchResult').classList.add('hidden');
+    const copyBatchResults = async () => {
+      const content = $('batchResultContent').value;
+      try {
+        await navigator.clipboard.writeText(content);
+        showToast('已复制全部 Key 到剪贴板', 'success');
+      } catch (e) {
+        showToast('复制失败', 'error');
+      }
+    };
+
+    const toggleSelectAllKeys = (el) => {
+      const boxes = document.querySelectorAll('.key-checkbox');
+      boxes.forEach(cb => {
+        cb.checked = el.checked;
+        if (el.checked) selectedKeys.add(cb.dataset.key);
+        else selectedKeys.delete(cb.dataset.key);
+      });
+      updateKeySelectAllState();
+      updateBatchActionBar();
+    };
+
+    const toggleKeySelection = (el) => {
+      if (el.checked) selectedKeys.add(el.dataset.key);
+      else selectedKeys.delete(el.dataset.key);
+      updateKeySelectAllState();
+      updateBatchActionBar();
+    };
+
+    const updateBatchActionBar = () => {
+      const bar = $('batchActionBar');
+      const count = $('selectedCount');
+      if (count) count.textContent = selectedKeys.size;
+      if (bar) bar.classList.toggle('hidden', selectedKeys.size === 0);
+    };
+
+    const selectAllKeysGlobal = () => {
+      const total = allKeysData.length;
+      if (!total) return;
+      if (!confirm(`确定要选中全部 ${total} 个 Key 吗？`)) return;
+      selectedKeys.clear();
+      allKeysData.forEach(k => selectedKeys.add(k.key));
+      renderKeys();
+    };
+
+    const clearSelectedKeys = () => {
+      if (!selectedKeys.size) return;
+      selectedKeys.clear();
+      renderKeys();
+    };
+
+    const batchDeleteKeys = async () => {
+      if (!selectedKeys.size || !confirm(`确定要删除选中的 ${selectedKeys.size} 个 Key 吗？此操作无法撤销！`)) return;
+      try {
+        const r = await apiRequest('/api/keys/batch-delete', { method: 'POST', body: JSON.stringify({ keys: Array.from(selectedKeys) }) });
+        const d = await r.json();
+        if (d.success) { showToast(d.message); loadKeys() }
+      } catch (e) { showToast('批量删除失败', 'error') }
+    };
+
+    const batchUpdateStatus = async (isActive) => {
+      if (!selectedKeys.size) return;
+      try {
+        const r = await apiRequest('/api/keys/batch-status', { method: 'POST', body: JSON.stringify({ keys: Array.from(selectedKeys), is_active: isActive }) });
+        const d = await r.json();
+        if (d.success) { showToast(d.message); loadKeys() }
+      } catch (e) { showToast('批量更新失败', 'error') }
+    };
+
+    const deleteKey = async (key) => {
+      if (!confirm('确定要删除这个 Key 吗？此操作无法撤销！')) return;
+      try {
+        const r = await apiRequest('/api/keys/delete', { method: 'POST', body: JSON.stringify({ key }) });
+        if ((await r.json()).success) { showToast('删除成功'); loadKeys() }
+      } catch (e) { showToast('删除失败', 'error') }
+    };
+
+    const toggleKeyStatus = async (key, isActive) => {
+      try {
+        await apiRequest('/api/keys/status', { method: 'POST', body: JSON.stringify({ key, is_active: isActive }) });
+        showToast('状态更新成功'); loadKeys();
+      } catch (e) { showToast('更新失败', 'error') }
+    };
+
+    const editKeyName = async (key, oldName) => {
+      const name = prompt("修改备注名称:", oldName);
+      if (name && name !== oldName) {
+        try {
+          await apiRequest('/api/keys/name', { method: 'POST', body: JSON.stringify({ key, name }) });
+          showToast('备注更新成功'); loadKeys();
+        } catch (e) { showToast('更新失败', 'error') }
+      }
+    };
+
+    const copyToClipboard = (text) => {
+      navigator.clipboard.writeText(text).then(() => showToast('已复制到剪贴板')).catch(() => showToast('复制失败', 'error'));
+    };
+
+    // --- 日志审计 ---
+
+    const loadLogs = async () => {
+      try {
+        const r = await apiRequest('/api/logs?limit=1000');
+        const d = await r.json();
+        if (d.success) {
+          allLogsData = d.data;
+          currentLogPage = 1;
+          renderLogs();
+        }
+      } catch (e) { console.error('加载日志失败:', e); showToast('加载日志失败', 'error') }
+    };
+
+    const renderLogs = () => {
+      const tbody = $('logTableBody');
+      tbody.innerHTML = '';
+      const total = allLogsData.length;
+      $('logEmptyState').classList.toggle('hidden', total > 0);
+      $('logPagination').classList.toggle('hidden', total === 0);
+
+      const maxPage = Math.max(1, Math.ceil(total / logsPerPage));
+      if (currentLogPage > maxPage) currentLogPage = maxPage;
+
+      $('logTotalCount').textContent = total;
+      $('logCurrentPage').textContent = currentLogPage;
+      $('logMaxPage').textContent = maxPage;
+      $('logPrevBtn').disabled = currentLogPage <= 1;
+      $('logNextBtn').disabled = currentLogPage >= maxPage;
+
+      const start = (currentLogPage - 1) * logsPerPage;
+      const end = start + logsPerPage;
+      const pageData = allLogsData.slice(start, end);
+
+      pageData.forEach(l => {
+        const tr = document.createElement('tr');
+        tr.className = 'border-b border-border hover:bg-muted/50 transition-colors';
+        const statusClass = l.status === 200 ? 'text-green-600' : 'text-red-600';
+        tr.innerHTML = `
+                  <td class="p-4 align-middle text-muted-foreground whitespace-nowrap">${l.time}</td>
+                  <td class="p-4 align-middle font-medium">${l.key_name}</td>
+                  <td class="p-4 align-middle text-xs">${l.model}</td>
+                  <td class="p-4 align-middle text-xs text-muted-foreground">${l.ip}</td>
+                  <td class="p-4 align-middle text-xs">${l.duration}s</td>
+                  <td class="p-4 align-middle ${statusClass} font-bold">${l.status}</td>
+                  <td class="p-4 align-middle">
+                       ${l.error ? `<span class="text-red-500 text-xs" title="${l.error.replace(/"/g, '&quot;')}">错误详情</span>` : '-'}
+                  </td>
+              `;
+        tbody.appendChild(tr);
+      });
+    };
+
+    const changeLogPage = (delta) => {
+      currentLogPage += delta;
+      renderLogs();
+      $('logTableBody').closest('.overflow-auto').scrollTop = 0;
+    };
+
+    const clearLogs = async () => {
+      if (!confirm('确定要清空所有日志吗？')) return;
+      try {
+        await apiRequest('/api/logs/clear', { method: 'POST' });
+        showToast('日志已清空'); loadLogs();
+      } catch (e) { showToast('清空失败', 'error') }
+    };
+    // checkAuth 已移除（使用新版 apiRequest）
+    // apiRequest 已移除（使用新版）
+    const loadStats = async () => {
+      try {
+        const r = await apiRequest('/api/stats');
+        if (!r) return;
+        const d = await r.json();
+        if (d.success) {
+          const s = d.data || {};
+          const normal = s.normal || {};
+          const superStats = s.super || {};
+          const sum = (key) => (normal[key] || 0) + (superStats[key] || 0);
+          $('statTotal').textContent = s.total || 0;
+          $('statActive').textContent = sum('active');
+          $('statUnused').textContent = sum('unused');
+          $('statLimited').textContent = sum('limited');
+          $('statExpired').textContent = sum('expired');
+          $('statCooldown').textContent = sum('cooldown');
+          $('statExhausted').textContent = sum('exhausted');
+        }
+      } catch (e) { console.error('加载统计失败:', e) }
+    };
+    const calcRemaining = () => { let n = 0, h = 0; allTokens.forEach(t => { if (t.remaining_queries > 0) n += t.remaining_queries; if (t.heavy_remaining_queries > 0) h += t.heavy_remaining_queries }); return { normal: n, heavy: h, total: n + h } };
+    const loadTokens = async () => {
+      try {
+        const r = await apiRequest('/api/tokens');
+        if (!r) return;
+        const d = await r.json();
+        if (d.success) {
+          allTokens = d.data.map(t => ({
+            ...t,
+            tags: t.tags || [],
+            note: t.note || '',
+            cooldown_remaining: t.cooldown_remaining || 0,
+            cooldown_until: t.cooldown_until || null,
+            last_failure_time: t.last_failure_time || null,
+            last_failure_reason: t.last_failure_reason || '',
+            limit_reason: t.limit_reason || ''
+          }));
+          filteredTokens = allTokens;
+          selectedTokens.clear();
+          renderTokens();
+          updateRemaining();
+          await loadAllTags();
+        }
+      } catch (e) { console.error('加载列表失败:', e) }
+    };
+    const updateRemaining = () => { const r = calcRemaining(); const chatTotal = r.total; const imageTotal = Math.floor(chatTotal / 2); $('statChatRemaining').textContent = chatTotal === 0 ? '-' : chatTotal.toLocaleString(); $('statImageRemaining').textContent = imageTotal === 0 ? '-' : imageTotal.toLocaleString(); $('statVideoRemaining').textContent = '无法统计' };
+    const formatDuration = (seconds) => {
+      if (!seconds || seconds <= 0) return '-';
+      const sec = Math.floor(seconds % 60);
+      const min = Math.floor(seconds / 60) % 60;
+      const hour = Math.floor(seconds / 3600);
+      const parts = [];
+      if (hour) parts.push(`${hour}时`);
+      if (min) parts.push(`${min}分`);
+      if (!hour && !min) parts.push(`${sec}秒`);
+      else if (sec) parts.push(`${sec}秒`);
+      return parts.join('');
+    };
+    const formatDateTime = (ms) => {
+      if (!ms) return '-';
+      return new Date(ms).toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' });
+    };
+
+    const renderTokens = () => {
+      const tb = $('tokenTableBody');
+      const es = $('emptyState');
+      const ss = {
+        '未使用': 'bg-muted text-muted-foreground',
+        '冷却中': 'bg-orange-50 text-orange-700 border-orange-200',
+        '额度耗尽': 'bg-amber-50 text-amber-700 border-amber-200',
+        '限流中': 'bg-orange-50 text-orange-700 border-orange-200',
+        '失效': 'bg-destructive/10 text-destructive border-destructive/20',
+        '正常': 'bg-green-50 text-green-700 border-green-200'
+      };
+      const ts = { sso: 'bg-blue-50 text-blue-700 border-blue-200', ssoSuper: 'bg-purple-50 text-purple-700 border-purple-200' };
+      const tl = { sso: 'SSO', ssoSuper: 'SuperSSO' };
+      const limitLabels = { cooldown: '429 冷却', exhausted: '额度耗尽' };
+      if (!filteredTokens.length) { tb.innerHTML = ''; es.classList.remove('hidden'); $('selectAll').checked = false; return updateBatchActions() }
+      es.classList.add('hidden');
+      tb.innerHTML = filteredTokens.map(t => {
+        const tagsHtml = t.tags && t.tags.length ? t.tags.map(tag => `<span class="inline-flex items-center rounded px-1.5 py-0.5 text-xs bg-gray-100 text-gray-700">${tag}</span>`).join(' ') : '<span class="text-xs text-muted-foreground">-</span>';
+        const noteHtml = t.note && t.note.length ? `<span class="text-xs text-gray-700" title="${t.note}">${t.note.length > 20 ? t.note.substring(0, 20) + '...' : t.note}</span>` : '<span class="text-xs text-muted-foreground">-</span>';
+        const limitReasonText = limitLabels[t.limit_reason] || '-';
+        const cooldownText = t.cooldown_remaining ? formatDuration(t.cooldown_remaining) : '-';
+        const cooldownTitle = t.cooldown_until ? formatDateTime(t.cooldown_until) : '';
+        const limitInfoHtml = `<div class="text-xs ${limitReasonText === '-' ? 'text-muted-foreground' : 'text-gray-700'}"><div>${limitReasonText}</div><div${cooldownTitle ? ` title="${cooldownTitle}"` : ''}>${cooldownText}</div></div>`;
+        const failureReason = t.last_failure_reason || '-';
+        const failureTitle = failureReason.replace(/"/g, '&quot;');
+        const failureDisplay = failureReason.length > 24 ? failureReason.substring(0, 24) + '...' : failureReason;
+        const failureTime = t.last_failure_time ? formatDateTime(t.last_failure_time) : '-';
+        const failureHtml = `<div class="text-xs ${failureReason === '-' ? 'text-muted-foreground' : 'text-gray-700'}" title="${failureTitle}">${failureDisplay}</div><div class="text-xs text-muted-foreground">${failureTime}</div>`;
+        return `<tr class="transition-colors"><td class="py-2.5 px-3 align-middle w-12"><input type="checkbox" class="token-checkbox h-3.5 w-3.5 rounded border border-input focus:ring-1 focus:ring-ring" data-token="${t.token}" data-type="${t.token_type}" ${selectedTokens.has(t.token) ? 'checked' : ''} onchange="toggleToken('${t.token}')"></td><td class="py-2.5 px-3 align-middle w-80"><div class="flex items-center gap-2"><span class="font-mono text-xs">${t.token.substring(0, 30)}...</span><button onclick="copyToken('${t.token.replace(/'/g, "\\'")}',event)" class="inline-flex items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring hover:bg-accent h-6 w-6" title="复制完整 Token"><svg class="h-3 w-3 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div></td><td class="py-2.5 px-3 align-middle w-20"><span class="inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium border ${ts[t.token_type]}">${tl[t.token_type]}</span></td><td class="py-2.5 px-3 align-middle w-20"><span class="inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium border ${ss[t.status] || ss['正常']}">${t.status}</span></td><td class="py-2.5 px-3 align-middle w-20 text-xs tabular-nums">${t.remaining_queries === -1 ? '-' : t.remaining_queries}</td><td class="py-2.5 px-3 align-middle w-20 text-xs tabular-nums">${t.heavy_remaining_queries === -1 ? '-' : t.heavy_remaining_queries}</td><td class="py-2.5 px-3 align-middle w-40">${limitInfoHtml}</td><td class="py-2.5 px-3 align-middle w-48">${failureHtml}</td><td class="py-2.5 px-3 align-middle w-32"><div class="flex flex-wrap gap-1">${tagsHtml}</div></td><td class="py-2.5 px-3 align-middle w-40">${noteHtml}</td><td class="py-2.5 px-3 align-middle w-32 text-xs text-muted-foreground">${t.created_time ? new Date(t.created_time).toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' }) : '-'}</td><td class="py-2.5 px-3 align-middle text-right w-28 sticky-right"><div class="flex items-center justify-end gap-1"><button onclick="testToken('${t.token}','${t.token_type}')" class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring hover:bg-blue-50 hover:text-blue-700 h-7 w-7" title="测试Token"><svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></button><button onclick="editToken('${t.token}','${t.token_type}')" class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring hover:bg-accent hover:text-accent-foreground h-7 w-7" title="编辑信息"><svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button><button onclick="deleteToken('${t.token}','${t.token_type}')" class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring hover:bg-destructive/10 hover:text-destructive h-7 w-7" title="删除"><svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></div></td></tr>`;
+      }).join('');
+      updateBatchActions();
+    };
+    const toggleToken = t => selectedTokens[selectedTokens.has(t) ? 'delete' : 'add'](t) || updateBatchActions();
+    const toggleSelectAll = () => { const sa = $('selectAll'); sa.checked ? filteredTokens.forEach(t => selectedTokens.add(t.token)) : selectedTokens.clear(); renderTokens() };
+    const updateBatchActions = () => { const ba = $('batchActions'), sc = $('selectedCount'), c = selectedTokens.size; ba.classList[c > 0 ? 'add' : 'remove']('flex'); ba.classList[c > 0 ? 'remove' : 'add']('hidden'); c > 0 && (sc.textContent = `已选择 ${c} 项`); $('selectAll').checked = filteredTokens.length > 0 && c === filteredTokens.length };
+    const filterTokens = () => { const tf = $('filterType').value, sf = $('filterStatus').value, tagf = $('filterTag').value; filteredTokens = allTokens.filter(t => (tf === 'all' || t.token_type === tf) && (sf === 'all' || t.status === sf) && (tagf === 'all' || t.tags && t.tags.includes(tagf))); selectedTokens.clear(); renderTokens() };
+    const loadAllTags = async () => { try { const r = await apiRequest('/api/tokens/tags/all'); if (!r) return; const d = await r.json(); if (d.success) { allTagsList = d.data; const tagFilter = $('filterTag'); const currentValue = tagFilter.value; tagFilter.innerHTML = '<option value="all">全部标签</option>' + allTagsList.map(tag => `<option value="${tag}">${tag}</option>`).join(''); tagFilter.value = currentValue } } catch (e) { console.error('加载标签列表失败:', e) } };
+    const refreshTokens = async () => { await loadTokens(); await loadStats() };
+    toggleBatchTestMenu = () => { const menu = $('batchTestMenu'); menu.classList.toggle('hidden') };
+    document.addEventListener('click', (e) => { const dropdown = $('batchTestDropdown'); if (dropdown && !dropdown.contains(e.target)) { $('batchTestMenu').classList.add('hidden') } });
 
     // 进度条相关
     let progressEl = null;
@@ -968,6 +1750,7 @@
         confirmMsg = `确定要测试 ${status ? '"' + status + '"状态的' : ''}${totalCount} 个 Token 吗？`;
       }
 
+      if (confirmMsg) confirmMsg += '\n（将同步刷新剩余额度）';
       if (!confirm(confirmMsg)) return;
 
       // 显示进度条
@@ -1017,26 +1800,231 @@
         hideProgress();
         showToast('批量测试失败: ' + e.message, 'error');
       }
-    }
+    };
+    const openAddModal = () => $('addModal').classList.remove('hidden');
+    const closeAddModal = () => { $('addModal').classList.add('hidden'); $('addTokenList').value = '' };
+    const deleteToken = async (t, tt) => { if (!confirm('确定要删除这个 Token 吗?')) return; try { const r = await apiRequest('/api/tokens/delete', { method: 'POST', body: JSON.stringify({ tokens: [t], token_type: tt }) }); if (!r) return; const d = await r.json(); d.success ? await refreshTokens() : showToast('删除失败: ' + (d.error || '未知错误'), 'error') } catch (e) { showToast('删除失败: ' + e.message, 'error') } };
+    const batchDelete = async () => { if (!selectedTokens.size || !confirm(`确定要删除选中的 ${selectedTokens.size} 个 Token 吗?此操作不可恢复!`)) return; const tbt = { sso: [], ssoSuper: [] }; document.querySelectorAll('.token-checkbox:checked').forEach(cb => tbt[cb.dataset.type].push(cb.dataset.token)); try { const ps = [];['sso', 'ssoSuper'].forEach(k => tbt[k].length && ps.push(apiRequest('/api/tokens/delete', { method: 'POST', body: JSON.stringify({ tokens: tbt[k], token_type: k }) }))); await Promise.all(ps); await refreshTokens() } catch (e) { showToast('批量删除失败: ' + e.message, 'error') } };
+    const submitAddTokens = async () => { const tt = $('addTokenType').value, tks = $('addTokenList').value.split('\n').map(t => t.trim()).filter(t => t); if (!tks.length) return showToast('请输入至少一个 Token', 'error'); try { const r = await apiRequest('/api/tokens/add', { method: 'POST', body: JSON.stringify({ tokens: tks, token_type: tt }) }); if (!r) return; const d = await r.json(); d.success ? (closeAddModal(), await refreshTokens()) : showToast('添加失败: ' + (d.error || '未知错误'), 'error') } catch (e) { showToast('添加失败: ' + e.message, 'error') } };
+    const copyToken = async (t, e) => { e.stopPropagation(); try { await navigator.clipboard.writeText(t); showToast('Token 已复制到剪贴板', 'success') } catch (err) { console.error('复制失败:', err); showToast('复制失败,请手动复制', 'error') } };
 
+    let currentEditToken = '', currentEditTokenType = '';
+    const editToken = (token, tokenType) => { currentEditToken = token; currentEditTokenType = tokenType; const tokenData = allTokens.find(t => t.token === token); const currentTags = tokenData?.tags || []; const currentNote = tokenData?.note || ''; $('editTokenInput').value = token.substring(0, 50) + '...'; $('editTagsInput').value = currentTags.join(', '); $('editNoteInput').value = currentNote; const suggestedContainer = $('suggestedTags'); suggestedContainer.innerHTML = ''; if (allTagsList.length > 0) { suggestedContainer.innerHTML = '<div class="text-xs text-muted-foreground mb-1">常用标签:</div>' + allTagsList.map(tag => `<button onclick="addTagToInput('${tag}')" class="inline-flex items-center rounded px-2 py-1 text-xs bg-muted hover:bg-accent transition-colors">${tag}</button>`).join('') } $('editTagsModal').classList.remove('hidden') };
+    const closeEditModal = () => { $('editTagsModal').classList.add('hidden'); currentEditToken = ''; currentEditTokenType = '' };
+    const addTagToInput = (tag) => { const input = $('editTagsInput'); const currentValue = input.value.trim(); const tags = currentValue ? currentValue.split(',').map(t => t.trim()) : []; if (!tags.includes(tag)) { tags.push(tag); input.value = tags.join(', ') } };
+    const submitEditInfo = async () => { if (!currentEditToken) return; const tagsInput = $('editTagsInput').value; const note = $('editNoteInput').value.trim(); const tags = tagsInput.split(',').map(t => t.trim()).filter(t => t); const promises = []; promises.push(apiRequest('/api/tokens/tags', { method: 'POST', body: JSON.stringify({ token: currentEditToken, token_type: currentEditTokenType, tags }) })); promises.push(apiRequest('/api/tokens/note', { method: 'POST', body: JSON.stringify({ token: currentEditToken, token_type: currentEditTokenType, note }) })); try { const results = await Promise.all(promises); const allSuccess = results.every(r => r && r.ok); if (allSuccess) { closeEditModal(); await refreshTokens(); showToast('信息更新成功', 'success') } else { showToast('部分更新失败，请重试', 'error') } } catch (e) { showToast('更新失败: ' + e.message, 'error') } };
 
-    const exportSelected = () => { if (!selectedTokens.size) return showToast('请先选择要导出的 Token', 'error'); const sd = allTokens.filter(t => selectedTokens.has(t.token)), csv = [['Token', '类型', '状态', '普通调用剩余', '高级调用剩余', '创建时间'].join(','), ...sd.map(t => [`"${t.token}"`, t.token_type === 'sso' ? 'SSO' : 'SuperSSO', t.status, t.remaining_queries === -1 ? '未使用' : t.remaining_queries, t.heavy_remaining_queries === -1 ? '未使用' : t.heavy_remaining_queries, `"${t.created_time ? new Date(t.created_time).toLocaleString('zh-CN') : '-'}"`].join(','))].join('\n'), l = document.createElement('a'); l.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })); l.download = `grok_tokens_${new Date().toISOString().slice(0, 10)}.csv`; l.style.display = 'none'; document.body.appendChild(l); l.click(); document.body.removeChild(l); URL.revokeObjectURL(l.href); showToast(`已导出 ${selectedTokens.size} 个 Token`, 'success') }
-    showToast = (m, t = 'info') => { const d = document.createElement('div'), bc = { success: 'bg-green-600', error: 'bg-destructive', info: 'bg-primary' }; d.className = `fixed bottom-4 right-4 ${bc[t] || bc.info} text-white px-4 py-2.5 rounded-lg shadow-lg text-sm font-medium z-50 animate-slide-up`; d.textContent = m; document.body.appendChild(d); setTimeout(() => { d.style.opacity = '0'; d.style.transition = 'opacity .3s'; setTimeout(() => d.parentNode && document.body.removeChild(d), 300) }, 2000) }
-    logout = async () => { if (!confirm('确定要退出登录吗?')) return; try { await apiRequest('/api/logout', { method: 'POST' }) } catch (e) { console.error('登出失败:', e) } finally { localStorage.removeItem('adminToken'); location.href = '/login' } },
-      switchTab = t => { const cap = n => n.charAt(0).toUpperCase() + n.slice(1);['tokens', 'settings'].forEach(n => { const active = n === t; $(`panel${cap(n)}`).classList.toggle('hidden', !active); $(`tab${cap(n)}`).classList.toggle('border-primary', active); $(`tab${cap(n)}`).classList.toggle('text-primary', active); $(`tab${cap(n)}`).classList.toggle('border-transparent', !active); $(`tab${cap(n)}`).classList.toggle('text-muted-foreground', !active) }); t === 'settings' && loadSettings() },
-      updateCacheProxyReadonly = () => { const proxyUrl = $('cfgProxyUrl').value.trim(), cacheProxyInput = $('cfgCacheProxyUrl'); if (proxyUrl) { cacheProxyInput.readOnly = false; cacheProxyInput.classList.remove('bg-muted'); cacheProxyInput.placeholder = 'socks5://username:password@127.0.0.1:7890' } else { cacheProxyInput.readOnly = true; cacheProxyInput.classList.add('bg-muted'); cacheProxyInput.value = ''; cacheProxyInput.placeholder = '设置服务代理后自动启用' } },
-      updateStatsigIdState = () => { const dynamicToggle = $('cfgDynamicStatsig'), statsigInput = $('cfgStatsigId'); if (dynamicToggle.checked) { statsigInput.disabled = true; statsigInput.classList.add('bg-muted', 'text-muted-foreground'); statsigInput.placeholder = '已启用动态生成' } else { statsigInput.disabled = false; statsigInput.classList.remove('bg-muted', 'text-muted-foreground'); statsigInput.placeholder = '' } },
-      loadSettings = async () => { try { const r = await apiRequest('/api/settings'); if (!r) return; const d = await r.json(); if (d.success) { const g = d.data.global, k = d.data.grok; const cfClearance = k.cf_clearance || ''; const cleanCfDisplay = cfClearance.startsWith('cf_clearance=') ? cfClearance.split('cf_clearance=')[1] : cfClearance; $('cfgAdminUser').value = g.admin_username || ''; $('cfgAdminPass').value = ''; $('cfgLogLevel').value = g.log_level || 'DEBUG'; $('cfgImageCacheMaxSize').value = g.image_cache_max_size_mb || 500; $('cfgVideoCacheMaxSize').value = g.video_cache_max_size_mb || 1000; $('cfgImageMode').value = g.image_mode || 'url'; $('cfgBaseUrl').value = g.base_url || ''; $('cfgApiKey').value = k.api_key || ''; $('cfgProxyUrl').value = k.proxy_url || ''; $('cfgProxyPoolUrl').value = k.proxy_pool_url || ''; $('cfgProxyPoolInterval').value = k.proxy_pool_interval || 300; $('cfgCacheProxyUrl').value = k.cache_proxy_url || ''; $('cfgCfClearance').value = cleanCfDisplay; $('cfgStatsigId').value = k.x_statsig_id || ''; $('cfgDynamicStatsig').checked = k.dynamic_statsig !== false; updateStatsigIdState(); $('cfgFilteredTags').value = k.filtered_tags || ''; $('cfgShowThinking').value = k.show_thinking !== false ? 'true' : 'false'; $('cfgTemporary').value = k.temporary !== false ? 'true' : 'false'; $('cfgStreamChunkTimeout').value = k.stream_chunk_timeout || 120; $('cfgStreamFirstResponseTimeout').value = k.stream_first_response_timeout || 30; $('cfgStreamTotalTimeout').value = k.stream_total_timeout || 600; $('cfgRetryStatusCodes').value = (k.retry_status_codes || [401, 429]).join(','); updateCacheProxyReadonly(); await loadCacheSize() } } catch (e) { console.error('加载配置失败:', e); showToast('加载配置失败', 'error') } },
-      loadCacheSize = async () => { try { const r = await apiRequest('/api/cache/size'); if (!r) return; const d = await r.json(); if (d.success) { ['image', 'video', 'total'].forEach(t => $(`${t}CacheSize`).value = d.data[`${t}_size`] || '0 MB') } } catch (e) { console.error('加载缓存大小失败:', e);['image', 'video', 'total'].forEach(t => $(`${t}CacheSize`).value = '0 MB') } },
-      clearCacheByType = async (type, url, msg) => { if (!confirm(msg)) return; try { const r = await apiRequest(url, { method: 'POST' }); if (!r) return; const d = await r.json(); d.success ? (showToast(`${type}缓存清理完成，已删除 ${d.data.deleted_count || 0} 个文件`, 'success'), await loadCacheSize()) : showToast('清理失败: ' + (d.error || '未知错误'), 'error') } catch (e) { showToast('清理失败: ' + e.message, 'error') } },
-      clearImageCache = () => clearCacheByType('图片', '/api/cache/clear/images', '确定要清理图片缓存吗？此操作将删除所有图片缓存文件！'),
-      clearVideoCache = () => clearCacheByType('视频', '/api/cache/clear/videos', '确定要清理视频缓存吗？此操作将删除所有视频缓存文件！'),
-      clearCache = () => clearCacheByType('', '/api/cache/clear', '确定要清理缓存吗？此操作将删除 /data/temp 目录中的所有文件！'),
-      saveGlobalSettings = async () => { const gc = { admin_username: $('cfgAdminUser').value, log_level: $('cfgLogLevel').value, image_cache_max_size_mb: parseInt($('cfgImageCacheMaxSize').value) || 500, video_cache_max_size_mb: parseInt($('cfgVideoCacheMaxSize').value) || 1000, image_mode: $('cfgImageMode').value, base_url: $('cfgBaseUrl').value }; if ($('cfgAdminPass').value) gc.admin_password = $('cfgAdminPass').value; try { const r = await apiRequest('/api/settings'); if (!r) return; const d = await r.json(); if (!d.success) return showToast('加载配置失败', 'error'); const s = await apiRequest('/api/settings', { method: 'POST', body: JSON.stringify({ global_config: gc, grok_config: d.data.grok }) }); if (!s) return; const sd = await s.json(); sd.success ? (showToast('全局配置保存成功', 'success'), $('cfgAdminPass').value = '') : showToast('保存失败: ' + (sd.error || '未知错误'), 'error') } catch (e) { showToast('保存失败: ' + e.message, 'error') } },
-      saveGrokSettings = async () => { const pu = $('cfgProxyUrl').value.trim(), cf = $('cfgCfClearance').value.trim(); const cleanCf = cf.startsWith('cf_clearance=') ? cf.split('cf_clearance=')[1] : cf; const retryCodesStr = $('cfgRetryStatusCodes').value.trim(); const retryCodes = retryCodesStr ? retryCodesStr.split(',').map(c => parseInt(c.trim())).filter(c => !isNaN(c)) : [401, 429]; const kc = { api_key: $('cfgApiKey').value, proxy_url: pu, proxy_pool_url: $('cfgProxyPoolUrl').value.trim(), proxy_pool_interval: parseInt($('cfgProxyPoolInterval').value) || 300, cache_proxy_url: pu ? $('cfgCacheProxyUrl').value : '', cf_clearance: cleanCf, x_statsig_id: $('cfgStatsigId').value, dynamic_statsig: $('cfgDynamicStatsig').checked, filtered_tags: $('cfgFilteredTags').value, show_thinking: $('cfgShowThinking').value === 'true', temporary: $('cfgTemporary').value === 'true', stream_chunk_timeout: parseInt($('cfgStreamChunkTimeout').value) || 120, stream_first_response_timeout: parseInt($('cfgStreamFirstResponseTimeout').value) || 30, stream_total_timeout: parseInt($('cfgStreamTotalTimeout').value) || 600, retry_status_codes: retryCodes }; try { const r = await apiRequest('/api/settings'); if (!r) return; const d = await r.json(); if (!d.success) return showToast('加载配置失败', 'error'); const s = await apiRequest('/api/settings', { method: 'POST', body: JSON.stringify({ global_config: d.data.global, grok_config: kc }) }); if (!s) return; const sd = await s.json(); sd.success ? showToast('Grok配置保存成功', 'success') : showToast('保存失败: ' + (sd.error || '未知错误'), 'error') } catch (e) { showToast('保存失败: ' + e.message, 'error') } };
-    updateHoverCardPosition = c => { const t = c.querySelector('.hover-card-trigger'), ct = c.querySelector('.hover-card-content'); if (!t || !ct) return; const { top, bottom } = t.getBoundingClientRect(), h = window.innerHeight; ct.classList.remove('top', 'bottom'); const { visibility: v, opacity: o } = getComputedStyle(ct); Object.assign(ct.style, { visibility: 'hidden', opacity: '1' }); const ch = ct.offsetHeight; Object.assign(ct.style, { visibility: v, opacity: o }); ct.classList.add(top > ch + 10 ? 'top' : h - bottom > ch + 10 ? 'bottom' : 'top') },
-      loadStorageMode = async () => { const modeConfig = { MYSQL: { classes: ['bg-blue-50', 'text-blue-700', 'border-blue-200'], tooltip: '数据库连接模式 - 数据持久化存储，修改配置时可能稍慢但更安全' }, REDIS: { classes: ['bg-purple-50', 'text-purple-700', 'border-purple-200'], tooltip: 'Redis缓存模式 - 高速内存存储，数据持久化且读写性能极佳' }, FILE: { classes: ['bg-green-50', 'text-green-700', 'border-green-200'], tooltip: '文件存储模式 - 本地文件存储，读写速度快' } }; const applyMode = (mode) => { $('storageModeText').textContent = mode; const config = modeConfig[mode] || modeConfig.FILE; $('storageMode').classList.add(...config.classes); $('storageModeTooltip').textContent = config.tooltip; updateHoverCardPosition($('storageMode').closest('.hover-card')) }; try { const r = await apiRequest('/api/storage/mode'); if (!r) return; const d = await r.json(); d.success && applyMode(d.data.mode) } catch (e) { console.error('加载存储模式失败:', e); applyMode('FILE') } };
-    window.addEventListener('DOMContentLoaded', () => { checkAuth(); loadStorageMode(); refreshTokens(); setInterval(() => { loadStats(); updateRemaining() }, 30000); window.addEventListener('resize', () => { const hoverCard = $('storageMode').closest('.hover-card'); hoverCard && updateHoverCardPosition(hoverCard) }); const hoverCard = $('storageMode').closest('.hover-card'), trigger = hoverCard?.querySelector('.hover-card-trigger'), content = hoverCard?.querySelector('.hover-card-content'); if (trigger && content) { trigger.addEventListener('mouseenter', () => { content.style.opacity = '1'; content.style.visibility = 'visible' }); trigger.addEventListener('mouseleave', () => { content.style.opacity = '0'; content.style.visibility = 'hidden' }) }; $('cfgProxyUrl').addEventListener('input', updateCacheProxyReadonly); $('cfgDynamicStatsig').addEventListener('change', updateStatsigIdState) });
+    const testToken = async (token, tokenType) => { const btn = event.target.closest('button'); const originalHtml = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<svg class="h-3.5 w-3.5 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>'; try { const r = await apiRequest('/api/tokens/test', { method: 'POST', body: JSON.stringify({ token, token_type: tokenType }) }); if (!r) return; const d = await r.json(); if (d.success && d.data.valid) { showToast(`Token有效！剩余: ${d.data.remaining_queries === -1 ? '无限制' : d.data.remaining_queries}次`, 'success'); await refreshTokens() } else { const errMsgs = { expired: 'Token已失效 (401错误)', blocked: '服务器被block，请稍后再试或更换IP', cooldown: 'Token处于冷却中', exhausted: 'Token额度耗尽' }; if (d.data?.error_type === 'cooldown' && d.data?.cooldown_remaining) { showToast(`Token冷却中，剩余 ${formatDuration(d.data.cooldown_remaining)}`, 'error') } else { showToast(errMsgs[d.data?.error_type] || 'Token无效或已失效', 'error') } } } catch (e) { showToast('测试失败: ' + e.message, 'error') } finally { btn.disabled = false; btn.innerHTML = originalHtml } };
+
+    const exportSelected = () => { if (!selectedTokens.size) return showToast('请先选择要导出的 Token', 'error'); const sd = allTokens.filter(t => selectedTokens.has(t.token)), limitLabels = { cooldown: '429 冷却', exhausted: '额度耗尽' }, csv = [['Token', '类型', '状态', '普通调用剩余', '高级调用剩余', '限流原因', '冷却剩余', '最近失败原因', '最近失败时间', '创建时间'].join(','), ...sd.map(t => { const limitReason = limitLabels[t.limit_reason] || '-'; const cooldown = t.cooldown_remaining ? formatDuration(t.cooldown_remaining) : '-'; const failureReason = t.last_failure_reason || '-'; const failureTime = t.last_failure_time ? formatDateTime(t.last_failure_time) : '-'; return [`"${t.token}"`, t.token_type === 'sso' ? 'SSO' : 'SuperSSO', t.status, t.remaining_queries === -1 ? '未使用' : t.remaining_queries, t.heavy_remaining_queries === -1 ? '未使用' : t.heavy_remaining_queries, limitReason, cooldown, `"${failureReason.replace(/"/g, '""')}"`, `"${failureTime}"`, `"${t.created_time ? new Date(t.created_time).toLocaleString('zh-CN') : '-'}"`].join(',') })].join('\n'), l = document.createElement('a'); l.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })); l.download = `grok_tokens_${new Date().toISOString().slice(0, 10)}.csv`; l.style.display = 'none'; document.body.appendChild(l); l.click(); document.body.removeChild(l); URL.revokeObjectURL(l.href); showToast(`已导出 ${selectedTokens.size} 个 Token`, 'success') }
+    // showToast, logout, switchTab 已经在上方统一定义
+
+    const updateCacheProxyReadonly = () => { const proxyUrl = $('cfgProxyUrl').value.trim(), cacheProxyInput = $('cfgCacheProxyUrl'); if (proxyUrl) { cacheProxyInput.readOnly = false; cacheProxyInput.classList.remove('bg-muted'); cacheProxyInput.placeholder = 'socks5://username:password@127.0.0.1:7890' } else { cacheProxyInput.readOnly = true; cacheProxyInput.classList.add('bg-muted'); cacheProxyInput.value = ''; cacheProxyInput.placeholder = '设置服务代理后自动启用' } };
+    const updateStatsigIdState = () => { const dynamicToggle = $('cfgDynamicStatsig'), statsigInput = $('cfgStatsigId'); if (dynamicToggle.checked) { statsigInput.disabled = true; statsigInput.classList.add('bg-muted', 'text-muted-foreground'); statsigInput.placeholder = '已启用动态生成' } else { statsigInput.disabled = false; statsigInput.classList.remove('bg-muted', 'text-muted-foreground'); statsigInput.placeholder = '' } };
+    const loadRequestStats = async () => {
+      try {
+        const r = await apiRequest('/api/request-stats');
+        if (!r) return;
+        const d = await r.json();
+        if (d.success) {
+          const { hourly, daily, models, summary } = d.data;
+          $('reqStatTotal').textContent = summary.total;
+          $('reqStatSuccess').textContent = summary.success;
+          $('reqStatFailed').textContent = summary.failed;
+          $('reqStatRate').textContent = summary.success_rate + '%';
+          ['hourlyChart', 'dailyChart', 'modelsChart'].forEach(id => {
+            const canvas = document.getElementById(id);
+            if (canvas.chart) canvas.chart.destroy();
+          });
+          const ctxHourly = document.getElementById('hourlyChart').getContext('2d');
+          document.getElementById('hourlyChart').chart = new Chart(ctxHourly, {
+            type: 'line',
+            data: {
+              labels: hourly.map(i => i.hour),
+              datasets: [
+                { label: '成功', data: hourly.map(i => i.success), borderColor: '#16a34a', tension: 0.3 },
+                { label: '失败', data: hourly.map(i => i.failed), borderColor: '#dc2626', tension: 0.3 }
+              ]
+            },
+            options: { responsive: true, interaction: { mode: 'index', intersect: false } }
+          });
+          const ctxDaily = document.getElementById('dailyChart').getContext('2d');
+          document.getElementById('dailyChart').chart = new Chart(ctxDaily, {
+            type: 'bar',
+            data: {
+              labels: daily.map(i => i.date),
+              datasets: [
+                { label: '成功', data: daily.map(i => i.success), backgroundColor: '#16a34a' },
+                { label: '失败', data: daily.map(i => i.failed), backgroundColor: '#dc2626' }
+              ]
+            },
+            options: { responsive: true, scales: { x: { stacked: true }, y: { stacked: true } } }
+          });
+          const ctxModels = document.getElementById('modelsChart').getContext('2d');
+          document.getElementById('modelsChart').chart = new Chart(ctxModels, {
+            type: 'doughnut',
+            data: {
+              labels: models.map(i => i.model),
+              datasets: [{
+                data: models.map(i => i.count),
+                backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#6366f1', '#14b8a6']
+              }]
+            },
+            options: { responsive: true, plugins: { legend: { position: 'right' } } }
+          });
+        }
+      } catch (e) { console.error('加载统计失败:', e); showToast('加载统计失败', 'error') }
+    };
+    const loadSettings = async () => { try { const r = await apiRequest('/api/settings'); if (!r) return; const d = await r.json(); if (d.success) { const g = d.data.global, k = d.data.grok; const cfClearance = k.cf_clearance || ''; const cleanCfDisplay = cfClearance.startsWith('cf_clearance=') ? cfClearance.split('cf_clearance=')[1] : cfClearance; $('cfgAdminUser').value = g.admin_username || ''; $('cfgAdminPass').value = ''; $('cfgLogLevel').value = g.log_level || 'DEBUG'; $('cfgImageCacheMaxSize').value = g.image_cache_max_size_mb || 500; $('cfgVideoCacheMaxSize').value = g.video_cache_max_size_mb || 1000; $('cfgImageMode').value = g.image_mode || 'url'; $('cfgBaseUrl').value = g.base_url || ''; $('cfgApiKey').value = k.api_key || ''; $('cfgProxyUrl').value = k.proxy_url || ''; $('cfgProxyPoolUrl').value = k.proxy_pool_url || ''; $('cfgProxyPoolInterval').value = k.proxy_pool_interval || 300; $('cfgCacheProxyUrl').value = k.cache_proxy_url || ''; $('cfgCfClearance').value = cleanCfDisplay; $('cfgStatsigId').value = k.x_statsig_id || ''; $('cfgDynamicStatsig').checked = k.dynamic_statsig !== false; updateStatsigIdState(); $('cfgFilteredTags').value = k.filtered_tags || ''; $('cfgShowThinking').value = k.show_thinking !== false ? 'true' : 'false'; $('cfgTemporary').value = k.temporary !== false ? 'true' : 'false'; $('cfgStreamChunkTimeout').value = k.stream_chunk_timeout || 120; $('cfgStreamFirstResponseTimeout').value = k.stream_first_response_timeout || 30; $('cfgStreamTotalTimeout').value = k.stream_total_timeout || 600; $('cfgRetryStatusCodes').value = (k.retry_status_codes || [401, 429]).join(','); updateCacheProxyReadonly(); await loadCacheSize() } } catch (e) { console.error('加载配置失败:', e); showToast('加载配置失败', 'error') } };
+    const loadCacheSize = async () => { try { const r = await apiRequest('/api/cache/size'); if (!r) return; const d = await r.json(); if (d.success) { ['image', 'video', 'total'].forEach(t => $(`${t}CacheSize`).value = d.data[`${t}_size`] || '0 MB') } } catch (e) { console.error('加载缓存大小失败:', e);['image', 'video', 'total'].forEach(t => $(`${t}CacheSize`).value = '0 MB') } };
+    const clearCacheByType = async (type, url, msg) => { if (!confirm(msg)) return; try { const r = await apiRequest(url, { method: 'POST' }); if (!r) return; const d = await r.json(); d.success ? (showToast(`${type}缓存清理完成，已删除 ${d.data.deleted_count || 0} 个文件`, 'success'), await loadCacheSize(), await loadCachePreview(true)) : showToast('清理失败: ' + (d.error || '未知错误'), 'error') } catch (e) { showToast('清理失败: ' + e.message, 'error') } };
+    const clearImageCache = () => clearCacheByType('图片', '/api/cache/clear/images', '确定要清理图片缓存吗？此操作将删除所有图片缓存文件！');
+    const clearVideoCache = () => clearCacheByType('视频', '/api/cache/clear/videos', '确定要清理视频缓存吗？此操作将删除所有视频缓存文件！');
+    const clearCache = () => clearCacheByType('', '/api/cache/clear', '确定要清理缓存吗？此操作将删除 /data/temp 目录中的所有文件！');
+    const cachePreviewState = { type: 'image', limit: 24, offset: 0, total: 0, items: [], loading: false };
+    const escapeHtml = (v) => v.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const updateCachePreviewMeta = () => { const meta = $('cachePreviewMeta'); if (!meta) return; const label = cachePreviewState.type === 'image' ? '图片' : '视频'; meta.textContent = `${label}缓存：${cachePreviewState.total || 0} 个` };
+    const updateCachePreviewTabs = () => {
+      const imageTab = $('cacheTabImage'), videoTab = $('cacheTabVideo');
+      if (!imageTab || !videoTab) return;
+      const isImage = cachePreviewState.type === 'image';
+      imageTab.classList.toggle('bg-primary', isImage);
+      imageTab.classList.toggle('text-primary-foreground', isImage);
+      imageTab.classList.toggle('bg-muted', !isImage);
+      imageTab.classList.toggle('text-muted-foreground', !isImage);
+      videoTab.classList.toggle('bg-primary', !isImage);
+      videoTab.classList.toggle('text-primary-foreground', !isImage);
+      videoTab.classList.toggle('bg-muted', isImage);
+      videoTab.classList.toggle('text-muted-foreground', isImage);
+    };
+    const updateCachePreviewLoadMore = () => {
+      const btn = $('cacheLoadMoreBtn');
+      if (!btn) return;
+      const hasMore = cachePreviewState.offset < cachePreviewState.total;
+      const disabled = cachePreviewState.loading || !hasMore;
+      btn.disabled = disabled;
+      btn.textContent = cachePreviewState.loading ? '加载中...' : hasMore ? '加载更多' : '没有更多';
+      btn.classList.toggle('opacity-50', disabled);
+    };
+    const renderCachePreview = () => {
+      const grid = $('cachePreviewGrid');
+      if (!grid) return;
+      if (!cachePreviewState.items.length) {
+        const emptyText = cachePreviewState.loading ? '加载中...' : '暂无缓存文件';
+        grid.innerHTML = `<div class="col-span-full text-sm text-muted-foreground text-center py-6">${emptyText}</div>`;
+        updateCachePreviewMeta();
+        updateCachePreviewLoadMore();
+        return;
+      }
+      grid.innerHTML = cachePreviewState.items.map(item => {
+        const rawName = item.name || '';
+        const name = escapeHtml(rawName);
+        const time = item.mtime ? new Date(item.mtime).toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' }) : '-';
+        const metaText = `${item.size || '-'} • ${time}`;
+        const meta = escapeHtml(metaText);
+        const url = escapeHtml(item.url || '');
+        const type = cachePreviewState.type;
+        const dataName = encodeURIComponent(rawName);
+        const dataMeta = encodeURIComponent(metaText);
+        const media = type === 'video'
+          ? `<video src="${url}" class="w-full h-32 bg-black object-cover" preload="metadata" muted playsinline></video>`
+          : `<img src="${url}" alt="${name}" loading="lazy" class="w-full h-32 object-cover bg-muted">`;
+        return `<div class="cache-preview-item rounded-md border border-border bg-muted/20 overflow-hidden cursor-pointer" data-url="${url}" data-type="${type}" data-name="${dataName}" data-meta="${dataMeta}"><div>${media}</div><div class="p-2 text-xs"><div class="truncate" title="${name}">${name}</div><div class="text-muted-foreground">${meta}</div><button type="button" class="text-primary hover:underline" data-action="open">预览</button></div></div>`;
+      }).join('');
+      bindCachePreviewClicks();
+      updateCachePreviewMeta();
+      updateCachePreviewLoadMore();
+    };
+    const bindCachePreviewClicks = () => {
+      const grid = $('cachePreviewGrid');
+      if (!grid || grid.dataset.bound === '1') return;
+      grid.dataset.bound = '1';
+      grid.addEventListener('click', (e) => {
+        const item = e.target.closest('.cache-preview-item');
+        if (!item) return;
+        const url = item.dataset.url || '';
+        const type = item.dataset.type || 'image';
+        const name = decodeURIComponent(item.dataset.name || '');
+        const meta = decodeURIComponent(item.dataset.meta || '');
+        openCacheViewer(url, type, name, meta);
+      });
+    };
+    const openCacheViewer = (url, type, name, meta) => {
+      const modal = $('cacheViewerModal');
+      const title = $('cacheViewerTitle');
+      const metaEl = $('cacheViewerMeta');
+      const body = $('cacheViewerBody');
+      if (!modal || !body) return;
+      title.textContent = name || '缓存预览';
+      metaEl.textContent = meta || '';
+      body.innerHTML = '';
+      if (type === 'video') {
+        const video = document.createElement('video');
+        video.src = url;
+        video.controls = true;
+        video.className = 'max-h-[70vh] w-auto max-w-full bg-black';
+        body.appendChild(video);
+      } else {
+        const img = document.createElement('img');
+        img.src = url;
+        img.alt = name || '缓存图片';
+        img.className = 'max-h-[70vh] w-auto max-w-full object-contain';
+        body.appendChild(img);
+      }
+      modal.classList.remove('hidden');
+    };
+    const closeCacheViewer = () => {
+      const modal = $('cacheViewerModal');
+      const body = $('cacheViewerBody');
+      if (body) body.innerHTML = '';
+      if (modal) modal.classList.add('hidden');
+    };
+    const initCacheViewer = () => {
+      const modal = $('cacheViewerModal');
+      if (!modal || modal.dataset.bound === '1') return;
+      modal.dataset.bound = '1';
+      modal.addEventListener('click', (e) => { if (e.target === modal) closeCacheViewer(); });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeCacheViewer();
+      });
+    };
+    const loadCachePreview = async (reset = false) => {
+      if (cachePreviewState.loading) return;
+      cachePreviewState.loading = true;
+      if (reset) {
+        cachePreviewState.offset = 0;
+        cachePreviewState.total = 0;
+        cachePreviewState.items = [];
+      }
+      updateCachePreviewTabs();
+      renderCachePreview();
+      try {
+        const url = `/api/cache/list?type=${cachePreviewState.type}&limit=${cachePreviewState.limit}&offset=${cachePreviewState.offset}`;
+        const r = await apiRequest(url);
+        if (!r) return;
+        const d = await r.json();
+        if (d.success && d.data) {
+          const items = d.data.items || [];
+          cachePreviewState.total = d.data.total || 0;
+          cachePreviewState.items = reset ? items : cachePreviewState.items.concat(items);
+          cachePreviewState.offset = (d.data.offset || 0) + items.length;
+        }
+      } catch (e) {
+        console.error('加载缓存预览失败:', e);
+        showToast('加载缓存预览失败', 'error');
+      } finally {
+        cachePreviewState.loading = false;
+        renderCachePreview();
+      }
+    };
+    const switchCachePreviewType = (type) => { if (!['image', 'video'].includes(type) || cachePreviewState.type === type) return; cachePreviewState.type = type; loadCachePreview(true) };
+    const refreshCachePreview = () => loadCachePreview(true);
+    const loadMoreCachePreview = () => loadCachePreview(false);
+    const saveGlobalSettings = async () => { const gc = { admin_username: $('cfgAdminUser').value, log_level: $('cfgLogLevel').value, image_cache_max_size_mb: parseInt($('cfgImageCacheMaxSize').value) || 500, video_cache_max_size_mb: parseInt($('cfgVideoCacheMaxSize').value) || 1000, image_mode: $('cfgImageMode').value, base_url: $('cfgBaseUrl').value }; if ($('cfgAdminPass').value) gc.admin_password = $('cfgAdminPass').value; try { const r = await apiRequest('/api/settings'); if (!r) return; const d = await r.json(); if (!d.success) return showToast('加载配置失败', 'error'); const s = await apiRequest('/api/settings', { method: 'POST', body: JSON.stringify({ global_config: gc, grok_config: d.data.grok }) }); if (!s) return; const sd = await s.json(); sd.success ? (showToast('全局配置保存成功', 'success'), $('cfgAdminPass').value = '') : showToast('保存失败: ' + (sd.error || '未知错误'), 'error') } catch (e) { showToast('保存失败: ' + e.message, 'error') } };
+    const saveGrokSettings = async () => { const pu = $('cfgProxyUrl').value.trim(), cf = $('cfgCfClearance').value.trim(); const cleanCf = cf.startsWith('cf_clearance=') ? cf.split('cf_clearance=')[1] : cf; const retryCodesStr = $('cfgRetryStatusCodes').value.trim(); const retryCodes = retryCodesStr ? retryCodesStr.split(',').map(c => parseInt(c.trim())).filter(c => !isNaN(c)) : [401, 429]; const kc = { api_key: $('cfgApiKey').value, proxy_url: pu, proxy_pool_url: $('cfgProxyPoolUrl').value.trim(), proxy_pool_interval: parseInt($('cfgProxyPoolInterval').value) || 300, cache_proxy_url: pu ? $('cfgCacheProxyUrl').value : '', cf_clearance: cleanCf, x_statsig_id: $('cfgStatsigId').value, dynamic_statsig: $('cfgDynamicStatsig').checked, filtered_tags: $('cfgFilteredTags').value, show_thinking: $('cfgShowThinking').value === 'true', temporary: $('cfgTemporary').value === 'true', stream_chunk_timeout: parseInt($('cfgStreamChunkTimeout').value) || 120, stream_first_response_timeout: parseInt($('cfgStreamFirstResponseTimeout').value) || 30, stream_total_timeout: parseInt($('cfgStreamTotalTimeout').value) || 600, retry_status_codes: retryCodes }; try { const r = await apiRequest('/api/settings'); if (!r) return; const d = await r.json(); if (!d.success) return showToast('加载配置失败', 'error'); const s = await apiRequest('/api/settings', { method: 'POST', body: JSON.stringify({ global_config: d.data.global, grok_config: kc }) }); if (!s) return; const sd = await s.json(); sd.success ? showToast('Grok配置保存成功', 'success') : showToast('保存失败: ' + (sd.error || '未知错误'), 'error') } catch (e) { showToast('保存失败: ' + e.message, 'error') } };
+    const updateHoverCardPosition = c => { const t = c.querySelector('.hover-card-trigger'), ct = c.querySelector('.hover-card-content'); if (!t || !ct) return; const { top, bottom } = t.getBoundingClientRect(), h = window.innerHeight; ct.classList.remove('top', 'bottom'); const { visibility: v, opacity: o } = getComputedStyle(ct); Object.assign(ct.style, { visibility: 'hidden', opacity: '1' }); const ch = ct.offsetHeight; Object.assign(ct.style, { visibility: v, opacity: o }); ct.classList.add(top > ch + 10 ? 'top' : h - bottom > ch + 10 ? 'bottom' : 'top') };
+    const loadStorageMode = async () => { const modeConfig = { MYSQL: { classes: ['bg-blue-50', 'text-blue-700', 'border-blue-200'], tooltip: '数据库连接模式 - 数据持久化存储，修改配置时可能稍慢但更安全' }, REDIS: { classes: ['bg-purple-50', 'text-purple-700', 'border-purple-200'], tooltip: 'Redis缓存模式 - 高速内存存储，数据持久化且读写性能极佳' }, FILE: { classes: ['bg-green-50', 'text-green-700', 'border-green-200'], tooltip: '文件存储模式 - 本地文件存储，读写速度快' } }; const applyMode = (mode) => { $('storageModeText').textContent = mode; const config = modeConfig[mode] || modeConfig.FILE; $('storageMode').classList.add(...config.classes); $('storageModeTooltip').textContent = config.tooltip; updateHoverCardPosition($('storageMode').closest('.hover-card')) }; try { const r = await apiRequest('/api/storage/mode'); if (!r) return; const d = await r.json(); d.success && applyMode(d.data.mode) } catch (e) { console.error('加载存储模式失败:', e); applyMode('FILE') } };
+    window.addEventListener('DOMContentLoaded', () => { loadStorageMode(); refreshTokens(); initCacheViewer(); setInterval(() => { loadStats(); updateRemaining() }, 30000); window.addEventListener('resize', () => { const hoverCard = $('storageMode').closest('.hover-card'); hoverCard && updateHoverCardPosition(hoverCard) }); const hoverCard = $('storageMode').closest('.hover-card'), trigger = hoverCard?.querySelector('.hover-card-trigger'), content = hoverCard?.querySelector('.hover-card-content'); if (trigger && content) { trigger.addEventListener('mouseenter', () => { content.style.opacity = '1'; content.style.visibility = 'visible' }); trigger.addEventListener('mouseleave', () => { content.style.opacity = '0'; content.style.visibility = 'hidden' }) }; $('cfgProxyUrl').addEventListener('input', updateCacheProxyReadonly); $('cfgDynamicStatsig').addEventListener('change', updateStatsigIdState) });
   </script>
 </body>
 
